@@ -29,15 +29,9 @@ build/
 .eggs/
 MANIFEST
 
-# Cython compiled artifacts (generated from .py source)
-*.c
-!backend/license/*.c
-*.so
-*.pyd
-
 # PyInstaller
 *.spec.bak
-backend/build/
+build/
 
 # pytest / coverage
 .pytest_cache/
@@ -58,8 +52,7 @@ dmypy.json
 # ── Runtime data (user-generated, not source) ────────────────
 data/
 uploads/
-backend/data/hunts/
-backend/uploads/
+template_seed_cache.json
 *.db
 *.sqlite
 *.sqlite3
@@ -72,26 +65,6 @@ backend/uploads/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# ── Frontend (Node.js / Bun) ─────────────────────────────────
-frontend/node_modules/
-frontend/dist/
-frontend/.cache/
-frontend/tsconfig.tsbuildinfo
-*.tsbuildinfo
-
-# ── Packaging / Desktop app artifacts ───────────────────────
-packaging/.venv_build/
-packaging/dist/
-packaging/*.dmg
-packaging/*.exe
-packaging/*.msi
-packaging/*.deb
-packaging/*.AppImage
-
-# Tauri: exclude heavy build artifacts only, keep source files for CI
-packaging/tauri/target/
-packaging/tauri/node_modules/
 
 # ── IDE / Editor ─────────────────────────────────────────────
 .idea/
@@ -107,6 +80,3 @@ logs/
 # ── Jupyter ──────────────────────────────────────────────────
 .ipynb_checkpoints/
 *.ipynb
-
-# ── License server runtime ───────────────────────────────────
-license-server/.env
