@@ -71,6 +71,9 @@ class SettingsPayload(BaseModel):
     email_fallback_language: str = ""
     email_tone: str = ""
     email_signature_block: str = ""
+    email_signature_name: str = ""
+    email_signature_title: str = ""
+    email_signature_phone: str = ""
     email_llm_requests_per_minute: str = ""
     email_reasoning_requests_per_minute: str = ""
     email_min_fit_score_to_send: str = ""
@@ -200,6 +203,9 @@ async def save_settings(payload: SettingsPayload):
         "email_fallback_language": "EMAIL_FALLBACK_LANGUAGE",
         "email_tone": "EMAIL_TONE",
         "email_signature_block": "EMAIL_SIGNATURE_BLOCK",
+        "email_signature_name": "EMAIL_SIGNATURE_NAME",
+        "email_signature_title": "EMAIL_SIGNATURE_TITLE",
+        "email_signature_phone": "EMAIL_SIGNATURE_PHONE",
         "email_llm_requests_per_minute": "EMAIL_LLM_REQUESTS_PER_MINUTE",
         "email_reasoning_requests_per_minute": "EMAIL_REASONING_REQUESTS_PER_MINUTE",
         "email_min_fit_score_to_send": "EMAIL_MIN_FIT_SCORE_TO_SEND",

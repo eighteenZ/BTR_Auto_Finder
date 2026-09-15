@@ -153,6 +153,9 @@ class Settings(BaseSettings):
     email_fallback_language: str = "en"
     email_tone: str = "professional"
     email_signature_block: str = ""
+    email_signature_name: str = ""
+    email_signature_title: str = ""
+    email_signature_phone: str = ""
     email_llm_model: str = ""
     email_reasoning_model: str = ""
     email_llm_requests_per_minute: int = 0

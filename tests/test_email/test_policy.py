@@ -57,3 +57,11 @@ def test_expand_email_targets_keeps_all_unique_business_emails():
         "info@acme.com",
         "sales@acme.com",
     ]
+
+
+def test_careers_and_hr_emails_are_deprioritized():
+    from emailing.policy import _GENERIC_LOCAL_PARTS
+
+    assert "careers" in _GENERIC_LOCAL_PARTS
+    assert "hr" in _GENERIC_LOCAL_PARTS
+    assert "jobs" in _GENERIC_LOCAL_PARTS

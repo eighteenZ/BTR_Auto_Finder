@@ -6,7 +6,7 @@ import smtplib
 from email.message import EmailMessage
 
 from config.settings import Settings
-from emailing.body_format import format_plaintext_email_body
+from emailing.body_format import apply_sender_placeholders, format_plaintext_email_body
 
 
 def _ensure_smtp_config(settings: Settings) -> None:
@@ -73,7 +73,17 @@ def send_smtp_email(
         message["Subject"] = subject
         if settings.email_reply_to.strip():
             message["Reply-To"] = settings.email_reply_to
-        message.set_content(format_plaintext_email_body(body_text))
+        message.set_content(
+            format_plaintext_email_body(
+                apply_sender_placeholders(
+                    body_text,
+                    sender_name=settings.email_signature_name or settings.email_from_name,
+                    sender_title=settings.email_signature_title,
+                    sender_phone=settings.email_signature_phone,
+                    sender_email=settings.email_from_address,
+                )
+            )
+        )
         client.send_message(message)
         return {
             "status": "sent",

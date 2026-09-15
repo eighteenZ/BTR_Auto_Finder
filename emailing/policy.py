@@ -7,6 +7,7 @@ from typing import Any
 
 _GENERIC_LOCAL_PARTS = {
     "info", "sales", "contact", "office", "hello", "support", "admin", "service",
+    "careers", "hr", "jobs", "recruiting", "recruitment", "employment",
 }
 
 _TITLE_PRIORITIES = [

@@ -10,7 +10,7 @@ from email.message import EmailMessage
 from typing import Any
 from uuid import uuid4
 
-from emailing.body_format import format_plaintext_email_body
+from emailing.body_format import apply_sender_placeholders, format_plaintext_email_body
 
 
 def _send_via_smtp_sync(
@@ -31,7 +31,18 @@ def _send_via_smtp_sync(
     message_id = f"<{uuid4()}@{(account.get('from_email') or 'localhost').split('@')[-1] or 'localhost'}>"
     msg["Message-ID"] = message_id
     msg["Date"] = email.utils.formatdate(localtime=True)
-    msg.set_content(format_plaintext_email_body(body_text))
+
+    from config.settings import get_settings
+
+    signature_settings = get_settings()
+    resolved_body = apply_sender_placeholders(
+        body_text,
+        sender_name=str(account.get("signature_name", "") or "") or signature_settings.email_signature_name,
+        sender_title=str(account.get("signature_title", "") or "") or signature_settings.email_signature_title,
+        sender_phone=str(account.get("signature_phone", "") or "") or signature_settings.email_signature_phone,
+        sender_email=str(account.get("from_email", "") or "") or signature_settings.email_from_address,
+    )
+    msg.set_content(format_plaintext_email_body(resolved_body))
 
     host = str(account.get("smtp_host", "") or "").strip()
     port = int(account.get("smtp_port", 587) or 587)

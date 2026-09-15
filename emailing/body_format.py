@@ -102,3 +102,106 @@ def format_email_sequence_bodies(emails: list[dict]) -> list[dict]:
         item["body_text"] = format_plaintext_email_body(str(item.get("body_text", "") or ""))
         formatted.append(item)
     return formatted
+
+
+_SENDER_PLACEHOLDER_PATTERN = re.compile(
+    r"\[\s*("
+    r"your\s+phone\s+number|your\s+email\s+address|"      # longest "your ..." forms first
+    r"your\s+name|your\s+title|your\s+email|your\s+phone|your\s+last\s+name|"
+    r"last\s+name|phone\s+number|e-?mail\s+address|company\s+address|"
+    r"phone\s*/\s*email|"
+    r"title|name|address|e-?mail|phone"                    # bare forms last
+    r")\s*\]",
+    re.IGNORECASE,
+)
+
+_SEPARATOR_ONLY_PATTERN = re.compile(r"^[\|\-\–\—,;:\s]*$")
+
+_LEFTOVER_BRACKET_TOKEN = re.compile(r"\s*\[[^\[\]\n]{1,40}\]")
+
+_CONTACT_LABEL_LINE = re.compile(r"^\s*(phone|tel|e-?mail)\s*[:：]\s*(.*)$", re.IGNORECASE)
+
+
+def _clean_substituted_line(line: str) -> str:
+    """Tidy separator punctuation exposed by placeholder removal."""
+    line = re.sub(r"\s*\|\s*(?:\|\s*)+", " | ", line)
+    line = re.sub(r"^\s*\|\s*|\s*\|\s*$", "", line)
+    line = re.sub(r"^[,;:\-\–\—\s]+", "", line)
+    return line
+
+
+def apply_sender_placeholders(
+    text: str,
+    *,
+    sender_name: str = "",
+    sender_title: str = "",
+    sender_phone: str = "",
+    sender_email: str = "",
+) -> str:
+    """Replace model-emitted signature placeholders with the configured identity.
+
+    Deterministic send-time safety net: whatever the generation model wrote,
+    the outbound body must never contain literal "[Your Name]"-style tokens.
+    "[Name]" on a salutation line refers to the recipient and falls back to a
+    neutral form of address.
+    """
+    values = {
+        "your name": str(sender_name or "").strip(),
+        "your title": str(sender_title or "").strip(),
+        "your email": str(sender_email or "").strip(),
+        "your phone": str(sender_phone or "").strip(),
+        "your email address": str(sender_email or "").strip(),
+        "your phone number": str(sender_phone or "").strip(),
+        "your last name": "",
+        "last name": "",
+        "email address": str(sender_email or "").strip(),
+        "e-mail address": str(sender_email or "").strip(),
+        "phone number": str(sender_phone or "").strip(),
+        "company address": "",
+        "address": "",
+        "phone/email": " | ".join(
+            part for part in (str(sender_phone or "").strip(), str(sender_email or "").strip()) if part
+        ),
+        "title": str(sender_title or "").strip(),
+        "email": str(sender_email or "").strip(),
+        "phone": str(sender_phone or "").strip(),
+    }
+
+    out_lines: list[str] = []
+    for line in str(text or "").replace("\r\n", "\n").split("\n"):
+        contact_match = _CONTACT_LABEL_LINE.match(line)
+        if contact_match:
+            label = contact_match.group(1).lower()
+            label = "Email" if "mail" in label else "Phone"
+            replacement = str(sender_email or "").strip() if label == "Email" else str(sender_phone or "").strip()
+            if replacement:
+                out_lines.append(f"{label}: {replacement}")
+                continue
+            # No configured value: drop the model-invented contact line entirely.
+            continue
+
+        if _SENDER_PLACEHOLDER_PATTERN.search(line):
+            is_salutation = line.strip().lower().startswith("dear")
+
+            def _sub(match: re.Match[str]) -> str:
+                key = match.group(1).lower()
+                if key == "name":
+                    return "Sir/Madam" if is_salutation else values["your name"]
+                return values.get(key, "")
+
+            replaced = _SENDER_PLACEHOLDER_PATTERN.sub(_sub, line)
+            # Unknown leftover bracket tokens (e.g. "[Address]") on a placeholder line.
+            replaced = _LEFTOVER_BRACKET_TOKEN.sub("", replaced)
+            replaced = _clean_substituted_line(replaced)
+            if replaced.strip() and not _SEPARATOR_ONLY_PATTERN.match(replaced):
+                out_lines.append(replaced)
+            continue
+
+        if re.fullmatch(r"\[[^\[\]\n]{1,40}\]", line.strip()):
+            # A line consisting solely of an unknown bracket token is a model
+            # placeholder artifact (e.g. "[Address]"), never real content.
+            continue
+
+        out_lines.append(line)
+
+    return "\n".join(out_lines)
