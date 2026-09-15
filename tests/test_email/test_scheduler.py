@@ -88,8 +88,6 @@ async def test_scheduler_sends_pending_message(tmp_path: Path, monkeypatch):
         "updated_at": "2026-03-09T00:00:00Z",
     })
 
-    monkeypatch.setattr("emailing.scheduler.load_hunt", lambda hunt_id: {"result": {}})
-    monkeypatch.setattr("emailing.scheduler.save_hunt", lambda hunt_id, hunt: None)
 
     async def fake_sender(*args, **kwargs):
         return {
@@ -191,8 +189,6 @@ async def test_scheduler_stops_underperforming_template_sequence(tmp_path: Path,
             "updated_at": "2026-03-09T00:00:00Z",
         })
 
-    monkeypatch.setattr("emailing.scheduler.load_hunt", lambda hunt_id: {"result": {}})
-    monkeypatch.setattr("emailing.scheduler.save_hunt", lambda hunt_id, hunt: None)
 
     async def fake_sender(*args, **kwargs):
         raise AssertionError("sender should not run for blocked template")

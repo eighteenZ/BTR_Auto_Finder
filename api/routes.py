@@ -24,9 +24,6 @@ from agents.search_agent import search_node
 from api.hunt_store import load_all_hunts, now_iso, save_hunt
 from api.security import require_api_access
 from config.settings import get_settings
-from emailing.imap_client import search_recent_replies
-from emailing.readiness import ensure_imap_ready, ensure_imap_tested, ensure_smtp_ready
-from emailing.smtp_client import send_smtp_email
 from emailing.template_pipeline import compose_template_plan, extract_template_profile
 from graph.builder import build_graph
 from graph.evaluate import _build_keyword_performance, evaluate_progress, should_continue_hunting
@@ -42,7 +39,6 @@ router = APIRouter()
 _hunts: dict[str, dict] = load_all_hunts(mark_interrupted=True)
 # SSE event queues per hunt — subscribers listen here
 _sse_queues: dict[str, list[asyncio.Queue]] = {}
-_reply_detection_task: asyncio.Task[Any] | None = None
 
 
 class HuntCancelledError(RuntimeError):
@@ -183,39 +179,6 @@ class HuntResult(BaseModel):
     round_feedback: dict | None = None
     keyword_search_stats: dict = Field(default_factory=dict)
     search_result_count: int = 0
-
-
-class EmailSequenceDecisionRequest(BaseModel):
-    decision: Literal["approved", "rejected"]
-    notes: str = ""
-
-
-class EmailSequenceDecisionResponse(BaseModel):
-    hunt_id: str
-    sequence_index: int
-    decision: str
-    auto_send_eligible: bool
-    manual_review: dict[str, Any]
-
-
-class SendEmailDraftRequest(BaseModel):
-    sequence_number: int = Field(default=1, ge=1, le=3)
-
-
-class SendEmailDraftResponse(BaseModel):
-    hunt_id: str
-    sequence_index: int
-    sequence_number: int
-    sent_to: str
-    subject: str
-    status: str
-
-
-class DetectReplyResponse(BaseModel):
-    hunt_id: str
-    sequence_index: int
-    reply_count: int
-    replies: list[dict[str, str]]
 
 
 # ── SSE helpers ────────────────────────────────────────────────────────
@@ -414,122 +377,6 @@ async def _prepare_template_seed(request: TemplateSeedRequest) -> dict[str, Any]
         await llm.close()
 
 
-def _sequence_is_send_approved(sequence: dict[str, Any]) -> bool:
-    manual_review = sequence.get("manual_review")
-    if isinstance(manual_review, dict):
-        if manual_review.get("decision") == "approved":
-            return True
-        if manual_review.get("decision") == "rejected":
-            return False
-    if not bool(getattr(get_settings(), "email_require_approval_before_send", True)):
-        return True
-    return bool(sequence.get("auto_send_eligible"))
-
-
-def _sequence_recipient(sequence: dict[str, Any]) -> str:
-    target = sequence.get("target") or {}
-    if isinstance(target, dict):
-        target_email = _clean_email(str(target.get("target_email", "") or ""))
-        if target_email:
-            return target_email
-
-    lead = sequence.get("lead") or {}
-    if isinstance(lead, dict):
-        for item in lead.get("emails", []) or []:
-            recipient = _clean_email(str(item))
-            if recipient:
-                return recipient
-    return ""
-
-
-async def _scan_hunt_replies() -> None:
-    settings = get_settings()
-    if not bool(settings.email_reply_detection_enabled):
-        return
-    try:
-        ensure_imap_tested(settings)
-    except ValueError as exc:
-        logger.debug("[ReplyDetection] Skipping automated reply scan because IMAP is not verified: %s", exc)
-        return
-
-    for hunt_id, hunt in list(_hunts.items()):
-        result = hunt.get("result") or {}
-        sequences = result.get("email_sequences", []) or []
-        changed = False
-        for sequence in sequences:
-            if not isinstance(sequence, dict):
-                continue
-            lead = sequence.get("lead") or {}
-            if not isinstance(lead, dict):
-                continue
-            recipient = _sequence_recipient(sequence)
-            if not recipient:
-                continue
-            sent_any = any(
-                isinstance(draft, dict) and str(draft.get("send_status", "") or "") == "sent"
-                for draft in sequence.get("emails", []) or []
-            )
-            if not sent_any:
-                continue
-
-            previous_count = int(((sequence.get("reply_detection") or {}).get("reply_count", 0)) or 0)
-            try:
-                replies = await asyncio.to_thread(search_recent_replies, settings, from_address=recipient)
-            except Exception as exc:
-                logger.debug("[ReplyDetection] IMAP scan failed for %s: %s", recipient, exc)
-                continue
-
-            sequence["reply_detection"] = {
-                "checked_at": now_iso(),
-                "reply_count": len(replies),
-                "replies": replies,
-            }
-            lead["reply_status"] = "replied" if replies else "no_reply"
-            changed = True
-
-            if len(replies) > previous_count:
-                _broadcast(hunt_id, "email_reply_detected", {
-                    "reply_count": len(replies),
-                    "lead_company": lead.get("company_name", ""),
-                    "recipient": recipient,
-                })
-
-        if changed:
-            hunt["result"] = result
-            save_hunt(hunt_id, hunt)
-
-
-async def _reply_detection_loop() -> None:
-    while True:
-        settings = get_settings()
-        interval = max(int(settings.email_reply_check_interval_seconds or 180), 30)
-        try:
-            await _scan_hunt_replies()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("[ReplyDetection] Loop error: %s", exc)
-        await asyncio.sleep(interval)
-
-
-def start_background_workers() -> None:
-    global _reply_detection_task
-    settings = get_settings()
-    if bool(settings.email_reply_detection_enabled) and _reply_detection_task is None:
-        _reply_detection_task = asyncio.create_task(_reply_detection_loop())
-
-
-async def stop_background_workers() -> None:
-    global _reply_detection_task
-    if _reply_detection_task is not None:
-        _reply_detection_task.cancel()
-        try:
-            await _reply_detection_task
-        except asyncio.CancelledError:
-            pass
-        _reply_detection_task = None
-
-
 def _broadcast_stage_data(hunt_id: str, completed_stage: str, state: dict) -> None:
     """Broadcast detail data for a stage that just completed."""
     payload: dict[str, Any] = {"stage": completed_stage}
@@ -607,6 +454,24 @@ async def _persist_hunt_leads(hunt_id: str, accumulated: dict[str, Any], dedup_m
         accumulated["leads"] = canonical
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Hunt %s] Lead persistence failed: %s", hunt_id[:8], exc)
+
+
+async def _persist_email_drafts(hunt_id: str, accumulated: dict[str, Any]) -> None:
+    """Hand generated sequences to the marketing domain via email_drafts."""
+    sequences = accumulated.get("email_sequences") or []
+    if not isinstance(sequences, list) or not sequences:
+        return
+    try:
+        written = await run_db(_draft_store().upsert_from_sequences, hunt_id, sequences)
+        logger.info("[Hunt %s] %d email draft(s) persisted to email_drafts", hunt_id[:8], written)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Hunt %s] Email draft persistence failed: %s", hunt_id[:8], exc)
+
+
+def _draft_store():
+    from emailing.draft_store import EmailDraftStore
+
+    return EmailDraftStore()
 
 
 async def _run_hunt(hunt_id: str, request: HuntRequest) -> None:
@@ -739,6 +604,7 @@ async def _run_hunt(hunt_id: str, request: HuntRequest) -> None:
 
         # Stream finished — accumulated has the full merged state
         await _persist_hunt_leads(hunt_id, accumulated, request.dedup_mode)
+        await _persist_email_drafts(hunt_id, accumulated)
         cost_summary = get_tracker(hunt_id).to_summary()
         remove_tracker(hunt_id)
         accumulated["cost_summary"] = cost_summary
@@ -1188,180 +1054,6 @@ async def get_hunt_result(hunt_id: str):
         round_feedback=result.get("round_feedback"),
         keyword_search_stats=result.get("keyword_search_stats", {}),
         search_result_count=len(result.get("search_results", [])),
-    )
-
-@router.post(
-    "/hunts/{hunt_id}/email-sequences/{sequence_index}/decision",
-    response_model=EmailSequenceDecisionResponse,
-    dependencies=[Depends(require_api_access)],
-)
-async def decide_email_sequence(
-    hunt_id: str,
-    sequence_index: int,
-    request: EmailSequenceDecisionRequest,
-):
-    """Persist a manual approval or rejection for a generated email sequence."""
-    if hunt_id not in _hunts:
-        raise HTTPException(status_code=404, detail="Hunt not found")
-
-    hunt = _hunts[hunt_id]
-    result = hunt.get("result") or {}
-    sequences = result.get("email_sequences", [])
-    if not isinstance(sequences, list):
-        raise HTTPException(status_code=422, detail="Hunt has no email sequence data")
-    if sequence_index < 0 or sequence_index >= len(sequences):
-        raise HTTPException(status_code=404, detail="Email sequence not found")
-
-    sequence = sequences[sequence_index]
-    if not isinstance(sequence, dict):
-        raise HTTPException(status_code=422, detail="Email sequence payload is invalid")
-
-    manual_review = {
-        "decision": request.decision,
-        "notes": request.notes,
-        "updated_at": now_iso(),
-    }
-    sequence["manual_review"] = manual_review
-    sequence["auto_send_eligible"] = request.decision == "approved"
-
-    hunt["result"] = result
-    hunt["email_sequences_count"] = len(sequences)
-    save_hunt(hunt_id, hunt)
-
-    return EmailSequenceDecisionResponse(
-        hunt_id=hunt_id,
-        sequence_index=sequence_index,
-        decision=request.decision,
-        auto_send_eligible=bool(sequence["auto_send_eligible"]),
-        manual_review=manual_review,
-    )
-
-
-@router.post(
-    "/hunts/{hunt_id}/email-sequences/{sequence_index}/send",
-    response_model=SendEmailDraftResponse,
-    dependencies=[Depends(require_api_access)],
-)
-async def send_email_sequence_draft(
-    hunt_id: str,
-    sequence_index: int,
-    request: SendEmailDraftRequest,
-):
-    """Send a specific draft from an approved email sequence via SMTP."""
-    if hunt_id not in _hunts:
-        raise HTTPException(status_code=404, detail="Hunt not found")
-
-    hunt = _hunts[hunt_id]
-    result = hunt.get("result") or {}
-    sequences = result.get("email_sequences", [])
-    if not isinstance(sequences, list):
-        raise HTTPException(status_code=422, detail="Hunt has no email sequence data")
-    if sequence_index < 0 or sequence_index >= len(sequences):
-        raise HTTPException(status_code=404, detail="Email sequence not found")
-
-    sequence = sequences[sequence_index]
-    if not isinstance(sequence, dict):
-        raise HTTPException(status_code=422, detail="Email sequence payload is invalid")
-    if not _sequence_is_send_approved(sequence):
-        raise HTTPException(status_code=409, detail="Email sequence must be approved before sending")
-
-    recipient = _sequence_recipient(sequence)
-    if not recipient:
-        raise HTTPException(status_code=422, detail="No recipient email found on this lead")
-
-    draft = None
-    for item in sequence.get("emails", []):
-        if isinstance(item, dict) and int(item.get("sequence_number", 0) or 0) == request.sequence_number:
-            draft = item
-            break
-    if not draft:
-        raise HTTPException(status_code=404, detail="Requested draft not found")
-
-    settings = get_settings()
-    try:
-        ensure_smtp_ready(settings)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    try:
-        send_result = await asyncio.to_thread(
-            send_smtp_email,
-            settings,
-            to_address=recipient,
-            subject=str(draft.get("subject", "") or ""),
-            body_text=str(draft.get("body_text", "") or ""),
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    draft["send_status"] = "sent"
-    draft["sent_at"] = now_iso()
-    draft["sent_to"] = recipient
-    hunt["result"] = result
-    save_hunt(hunt_id, hunt)
-
-    return SendEmailDraftResponse(
-        hunt_id=hunt_id,
-        sequence_index=sequence_index,
-        sequence_number=request.sequence_number,
-        sent_to=recipient,
-        subject=str(draft.get("subject", "") or ""),
-        status=send_result["status"],
-    )
-
-
-@router.post(
-    "/hunts/{hunt_id}/email-sequences/{sequence_index}/detect-replies",
-    response_model=DetectReplyResponse,
-    dependencies=[Depends(require_api_access)],
-)
-async def detect_email_sequence_replies(
-    hunt_id: str,
-    sequence_index: int,
-):
-    """Check IMAP inbox for replies from the lead's email address."""
-    if hunt_id not in _hunts:
-        raise HTTPException(status_code=404, detail="Hunt not found")
-
-    hunt = _hunts[hunt_id]
-    result = hunt.get("result") or {}
-    sequences = result.get("email_sequences", [])
-    if not isinstance(sequences, list) or sequence_index < 0 or sequence_index >= len(sequences):
-        raise HTTPException(status_code=404, detail="Email sequence not found")
-
-    sequence = sequences[sequence_index]
-    if not isinstance(sequence, dict):
-        raise HTTPException(status_code=422, detail="Email sequence payload is invalid")
-
-    lead = sequence.get("lead") or {}
-    recipient = _sequence_recipient(sequence)
-    if not recipient:
-        raise HTTPException(status_code=422, detail="No recipient email found on this lead")
-
-    settings = get_settings()
-    try:
-        ensure_imap_ready(settings)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    try:
-        replies = await asyncio.to_thread(search_recent_replies, settings, from_address=recipient)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    sequence["reply_detection"] = {
-        "checked_at": now_iso(),
-        "reply_count": len(replies),
-        "replies": replies,
-    }
-    if isinstance(lead, dict):
-        lead["reply_status"] = "replied" if replies else "no_reply"
-    hunt["result"] = result
-    save_hunt(hunt_id, hunt)
-
-    return DetectReplyResponse(
-        hunt_id=hunt_id,
-        sequence_index=sequence_index,
-        reply_count=len(replies),
-        replies=replies,
     )
 
 

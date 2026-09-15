@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable, Awaitable
 
-from api.hunt_store import load_hunt, save_hunt
 from config.settings import get_settings
 from emailing.email_sender import send_email
 from emailing.store import EmailStore
@@ -13,33 +12,6 @@ from emailing.store import EmailStore
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _refresh_hunt_email_summary(store: EmailStore, hunt_id: str, campaign_id: str) -> None:
-    hunt = load_hunt(hunt_id)
-    if not hunt:
-        return
-    campaign = store.get_campaign(campaign_id)
-    sequences = store.list_sequences_for_campaign(campaign_id)
-    settings = get_settings()
-    template_summary = store.get_template_performance_for_campaign(
-        campaign_id,
-        underperforming_min_assigned=int(getattr(settings, "email_template_underperforming_min_assigned", 10) or 10),
-        underperforming_min_reply_rate=float(getattr(settings, "email_template_underperforming_min_reply_rate", 1.0) or 1.0),
-    )
-    summary = {
-        "campaign_id": campaign_id,
-        "status": campaign.get("status", "draft") if campaign else "draft",
-        "sequences_total": len(sequences),
-        "sent_count": store.count_messages_for_campaign(campaign_id, status="sent"),
-        "failed_count": store.count_messages_for_campaign(campaign_id, status="failed"),
-        "pending_count": store.count_messages_for_campaign(campaign_id, status="pending"),
-        "replied_count": sum(1 for seq in sequences if seq.get("status") == "replied"),
-        "template_summary": list(template_summary.values()),
-    }
-    result = hunt.setdefault("result", {})
-    result["email_campaign_summary"] = summary
-    save_hunt(hunt_id, hunt)
 
 
 async def run_scheduler_once(
@@ -88,7 +60,6 @@ async def run_scheduler_once(
                     next_scheduled_at="",
                 )
                 skipped += 1
-                _refresh_hunt_email_summary(store, str(sequence["hunt_id"]), str(sequence["campaign_id"]))
                 continue
 
         result = await sender(
@@ -131,5 +102,4 @@ async def run_scheduler_once(
                 stop_reason=str(result.get("error_type", "") or "send_failed"),
             )
             failed += 1
-        _refresh_hunt_email_summary(store, str(sequence["hunt_id"]), str(sequence["campaign_id"]))
     return {"sent": sent, "failed": failed, "skipped": skipped}

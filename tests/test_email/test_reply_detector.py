@@ -108,8 +108,6 @@ async def test_reply_detector_matches_in_reply_to_and_stops_sequence(tmp_path: P
     store = EmailStore(str(tmp_path / "email.db"))
     _seed_store(store)
 
-    monkeypatch.setattr("emailing.reply_detector.load_hunt", lambda hunt_id: {"result": {}})
-    monkeypatch.setattr("emailing.reply_detector.save_hunt", lambda hunt_id, hunt: None)
 
     def fake_fetcher(account, *, now_iso: str):
         return [{
@@ -149,8 +147,6 @@ async def test_reply_detector_deduplicates_raw_ref(tmp_path: Path, monkeypatch):
     store = EmailStore(str(tmp_path / "email.db"))
     _seed_store(store)
 
-    monkeypatch.setattr("emailing.reply_detector.load_hunt", lambda hunt_id: {"result": {}})
-    monkeypatch.setattr("emailing.reply_detector.save_hunt", lambda hunt_id, hunt: None)
 
     def fake_fetcher(account, *, now_iso: str):
         return [{
@@ -174,8 +170,6 @@ async def test_reply_detector_ignores_out_of_office(tmp_path: Path, monkeypatch)
     store = EmailStore(str(tmp_path / "email.db"))
     _seed_store(store)
 
-    monkeypatch.setattr("emailing.reply_detector.load_hunt", lambda hunt_id: {"result": {}})
-    monkeypatch.setattr("emailing.reply_detector.save_hunt", lambda hunt_id, hunt: None)
 
     def fake_fetcher(account, *, now_iso: str):
         return [{
@@ -209,8 +203,6 @@ async def test_reply_detector_ignores_bounce_from_mailer_daemon(tmp_path: Path, 
     store = EmailStore(str(tmp_path / "email.db"))
     _seed_store(store)
 
-    monkeypatch.setattr("emailing.reply_detector.load_hunt", lambda hunt_id: {"result": {}})
-    monkeypatch.setattr("emailing.reply_detector.save_hunt", lambda hunt_id, hunt: None)
 
     def fake_fetcher(account, *, now_iso: str):
         return [{

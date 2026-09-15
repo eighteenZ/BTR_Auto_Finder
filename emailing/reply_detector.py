@@ -11,7 +11,6 @@ from email.header import decode_header, make_header
 from email.utils import getaddresses, parsedate_to_datetime
 from typing import Any, Callable
 
-from api.hunt_store import load_hunt, save_hunt
 from emailing.store import EmailStore
 
 _AUTO_REPLY_SUBJECT_MARKERS = (
@@ -123,25 +122,6 @@ def _received_at(message: email.message.Message, fallback_iso: str) -> str:
         return dt.astimezone(timezone.utc).isoformat()
     except Exception:
         return fallback_iso
-
-
-def _refresh_hunt_email_summary(store: EmailStore, hunt_id: str, campaign_id: str) -> None:
-    hunt = load_hunt(hunt_id)
-    if not hunt:
-        return
-    campaign = store.get_campaign(campaign_id)
-    sequences = store.list_sequences_for_campaign(campaign_id)
-    result = hunt.setdefault("result", {})
-    result["email_campaign_summary"] = {
-        "campaign_id": campaign_id,
-        "status": campaign.get("status", "draft") if campaign else "draft",
-        "sequences_total": len(sequences),
-        "sent_count": store.count_messages_for_campaign(campaign_id, status="sent"),
-        "failed_count": store.count_messages_for_campaign(campaign_id, status="failed"),
-        "pending_count": store.count_messages_for_campaign(campaign_id, status="pending"),
-        "replied_count": sum(1 for seq in sequences if seq.get("status") == "replied"),
-    }
-    save_hunt(hunt_id, hunt)
 
 
 def _match_sent_message(store: EmailStore, inbound: dict[str, Any]) -> dict[str, Any] | None:
@@ -309,7 +289,6 @@ async def run_reply_detection_once(
             stop_reason="reply_detected",
         )
         store.cancel_future_pending_messages(str(sequence["id"]), updated_at=current)
-        _refresh_hunt_email_summary(store, str(sequence["hunt_id"]), str(sequence["campaign_id"]))
         matched += 1
 
     return {"checked": checked, "matched": matched, "skipped": skipped, "ignored": ignored}

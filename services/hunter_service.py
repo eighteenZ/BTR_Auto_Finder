@@ -230,6 +230,16 @@ async def run_hunt(
     cost_summary = get_tracker(hunt_id).to_summary()
     remove_tracker(hunt_id)
 
+    email_sequences = accumulated.get("email_sequences", []) or []
+    if persist and email_sequences:
+        try:
+            from emailing.draft_store import EmailDraftStore
+
+            written = await run_db(EmailDraftStore().upsert_from_sequences, hunt_id, email_sequences)
+            logger.info("[HunterService] %d email draft(s) persisted for hunt %s", written, hunt_id[:8])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HunterService] email draft persistence failed: %s", exc)
+
     if persist:
         try:
             save_hunt(
@@ -240,7 +250,7 @@ async def run_hunt(
                     "current_stage": accumulated.get("current_stage", "done"),
                     "hunt_round": accumulated.get("hunt_round", 0),
                     "leads_count": len(leads),
-                    "email_sequences_count": len(accumulated.get("email_sequences", []) or []),
+                    "email_sequences_count": len(email_sequences),
                     "completed_at": now_iso(),
                     "error": error or "",
                     "result": {

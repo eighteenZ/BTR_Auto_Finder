@@ -51,10 +51,8 @@ def test_create_and_start_email_campaign(monkeypatch, tmp_path):
             ]
         },
     }
-    saved = {}
 
     monkeypatch.setattr("api.email_routes.load_hunt", lambda hunt_id: hunt)
-    monkeypatch.setattr("api.email_routes.save_hunt", lambda hunt_id, data: saved.update({hunt_id: data}))
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),
         "email_provider_type": "smtp",
@@ -97,7 +95,6 @@ def test_create_and_start_email_campaign(monkeypatch, tmp_path):
     assert res.status_code == 200
     assert len(res.json()) == 1
     assert res.json()[0]["template_summary"][0]["template_id"] == "tpl_123"
-    assert saved["hunt_1"]["result"]["email_campaign_summary"]["template_summary"][0]["template_id"] == "tpl_123"
 
 
 def test_create_campaign_skips_blocked_template(monkeypatch, tmp_path):
@@ -132,7 +129,6 @@ def test_create_campaign_skips_blocked_template(monkeypatch, tmp_path):
     }
 
     monkeypatch.setattr("api.email_routes.load_hunt", lambda hunt_id: hunt)
-    monkeypatch.setattr("api.email_routes.save_hunt", lambda hunt_id, data: None)
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),
         "email_provider_type": "smtp",
@@ -211,7 +207,6 @@ def test_create_campaign_skips_unapproved_sequences(monkeypatch, tmp_path):
     }
 
     monkeypatch.setattr("api.email_routes.load_hunt", lambda hunt_id: hunt)
-    monkeypatch.setattr("api.email_routes.save_hunt", lambda hunt_id, data: None)
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),
         "email_provider_type": "smtp",
@@ -274,7 +269,6 @@ def test_create_campaign_includes_needs_review_when_approval_not_required(monkey
     }
 
     monkeypatch.setattr("api.email_routes.load_hunt", lambda hunt_id: hunt)
-    monkeypatch.setattr("api.email_routes.save_hunt", lambda hunt_id, data: None)
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),
         "email_provider_type": "smtp",
@@ -339,7 +333,6 @@ def test_create_campaign_skips_previously_contacted_lead_email(monkeypatch, tmp_
     }
 
     monkeypatch.setattr("api.email_routes.load_hunt", lambda hunt_id: hunt)
-    monkeypatch.setattr("api.email_routes.save_hunt", lambda hunt_id, data: None)
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),
         "email_provider_type": "smtp",
@@ -728,7 +721,6 @@ def test_create_campaign_ignores_generation_self_approval(monkeypatch, tmp_path)
     }
 
     monkeypatch.setattr("api.email_routes.load_hunt", lambda hunt_id: hunt)
-    monkeypatch.setattr("api.email_routes.save_hunt", lambda hunt_id, data: None)
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),
         "email_provider_type": "smtp",

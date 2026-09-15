@@ -16,11 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.automation_routes import router as automation_router
 from api.email_routes import (
-    CreateCampaignRequest,
-    create_email_campaign,
-    start_email_campaign,
-)
-from api.email_routes import (
     router as email_router,
 )
 from api.hunt_store import load_all_hunts
@@ -33,8 +28,6 @@ from api.routes import (
     create_hunt_internal,
     request_hunt_cancel,
     router,
-    start_background_workers,
-    stop_background_workers,
 )
 from api.settings_routes import router as settings_router
 from api.sse import sse_router
@@ -322,20 +315,20 @@ async def _run_embedded_consumer_job(args: Namespace, payload: dict[str, object]
         campaign_summary: dict[str, object] | None = None
         if args.auto_start_campaign and payload.get("enable_email_craft"):
             ensure_not_cancelled()
-            report("create_campaign", "Creating campaign from approved email sequences", hunt_id=hunt_id)
-            created_campaign = await create_email_campaign(
-                hunt_id,
-                CreateCampaignRequest(name=_campaign_name(args.campaign_name_prefix, hunt_id)),
+            report("create_campaign", "Enqueuing campaign job for marketing service", hunt_id=hunt_id)
+            from emailing.draft_store import CampaignJobQueue
+
+            job = await asyncio.to_thread(
+                lambda: CampaignJobQueue().enqueue(
+                    hunt_id,
+                    {"name": _campaign_name(args.campaign_name_prefix, hunt_id), "auto_start": True},
+                )
             )
-            campaign_id = str(created_campaign.campaign_id)
-            sequence_count = int(created_campaign.sequence_count or 0)
-            if sequence_count > 0:
-                ensure_not_cancelled()
-                report("start_campaign", "Starting campaign and handing off to scheduler", hunt_id=hunt_id)
-                campaign_summary = await start_email_campaign(campaign_id)
-            else:
-                report("campaign_draft", "Campaign created but no send-ready sequences were available", hunt_id=hunt_id)
-                campaign_summary = {"campaign_id": campaign_id, "status": "draft", "sequence_count": 0}
+            campaign_summary = {
+                "campaign_job_id": job["id"],
+                "status": "queued",
+                "note": "marketing service will create and start the campaign",
+            }
 
         final_result: dict[str, object] = {
             "hunt_id": hunt_id,
@@ -683,8 +676,6 @@ async def lifespan(app: FastAPI):
     logger.info("[AutomationConsumer] background loop started")
     update_worker_state("consumer", enabled=_embedded_consumer_enabled(settings), running=True, worker_id=_automation_worker_id())
 
-    start_background_workers()
-
     try:
         yield
     finally:
@@ -719,8 +710,6 @@ async def lifespan(app: FastAPI):
                 await consumer_task
             logger.info("[AutomationConsumer] background loop stopped")
         update_worker_state("consumer", running=False, active_job_id="")
-
-    await stop_background_workers()
 
 
 def create_app() -> FastAPI:

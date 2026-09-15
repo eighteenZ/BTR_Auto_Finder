@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 from persistence.db import execute, fetch_all, fetch_one, get_session
+from persistence.lead_identity import compute_lead_key
 
 
 def now_iso() -> str:
@@ -136,6 +137,64 @@ class EmailDraftStore:
                 session, f"SELECT COUNT(*) AS count FROM email_drafts WHERE {clause}", tuple(values)
             )
         return int((row or {}).get("count", 0))
+
+    # ── hunter-side ingestion ─────────────────────────────────────────────
+
+    def _lead_id_for_key(self, lead_key: str) -> str:
+        if not lead_key:
+            return ""
+        with get_session() as session:
+            row = fetch_one(session, "SELECT id FROM leads WHERE lead_key = ? LIMIT 1", (lead_key,))
+        return str(row["id"]) if row else ""
+
+    def _payload_from_sequence(self, hunt_id: str, index: int, seq: dict[str, Any]) -> dict[str, Any]:
+        lead = seq.get("lead") or {}
+        lead_key = compute_lead_key(lead) if lead else ""
+        manual = seq.get("manual_review") or {}
+        status = str(manual.get("decision", "") or "") or "draft"
+        return {
+            "id": str(uuid4()),
+            "hunt_id": hunt_id,
+            "sequence_index": index,
+            "lead_id": self._lead_id_for_key(lead_key),
+            "lead_key": lead_key,
+            "company_name": str(lead.get("company_name", "") or ""),
+            "website": str(lead.get("website", "") or ""),
+            "locale": str(seq.get("locale", "en") or "en"),
+            "target": seq.get("target") or {},
+            "targets": seq.get("targets") or [],
+            "emails": seq.get("emails") or [],
+            "language_choice": seq.get("language_choice") or {},
+            "strategy_brief": seq.get("strategy_brief") or {},
+            "validation_summary": seq.get("validation_summary") or {},
+            "review_summary": seq.get("review_summary") or {},
+            "review_status": str(seq.get("review_status", "") or ""),
+            "generation_mode": str(seq.get("generation_mode", "personalized") or "personalized"),
+            "template_id": str(seq.get("template_id", "") or ""),
+            "template_group": str(seq.get("template_group", "") or ""),
+            "template_usage_index": int(seq.get("template_usage_index", 0) or 0),
+            "template_max_send_count": int(seq.get("template_max_send_count", 0) or 0),
+            "template_seed_source": str(seq.get("template_seed_source", "") or ""),
+            "status": status,
+            "manual_review": manual,
+            "error": "",
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+
+    def upsert_from_sequences(self, hunt_id: str, sequences: list[Any]) -> int:
+        """Persist hunt-generated sequences into the draft contract table.
+
+        Returns the number of drafts written. Manual decisions already stored
+        are preserved (upsert_draft never overwrites manual_review/status).
+        """
+        written = 0
+        for index, seq in enumerate(sequences or []):
+            if not isinstance(seq, dict):
+                continue
+            self.upsert_draft(self._payload_from_sequence(hunt_id, index, seq))
+            written += 1
+        return written
 
 
 class CampaignJobQueue:

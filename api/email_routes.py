@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.hunt_store import load_hunt, now_iso, save_hunt
+from api.hunt_store import load_hunt, now_iso
 from api.security import require_api_access
 from config.settings import get_settings
 from emailing.policy import expand_email_targets
@@ -114,51 +114,6 @@ def _campaign_summary(store: EmailStore, campaign_id: str) -> dict[str, Any]:
         "template_summary": list(template_summary.values()),
         "sequences": sequences,
     }
-
-
-def _write_summary_to_hunt(store: EmailStore, hunt_id: str, campaign_id: str) -> None:
-    hunt = load_hunt(hunt_id)
-    if not hunt:
-        return
-    result = hunt.setdefault("result", {})
-    settings = get_settings()
-    campaign = store.get_campaign(campaign_id)
-    sequences = store.list_sequences_for_campaign(campaign_id)
-    template_summary = store.get_template_performance_for_campaign(
-        campaign_id,
-        underperforming_min_assigned=int(getattr(settings, "email_template_underperforming_min_assigned", 10) or 10),
-        underperforming_min_reply_rate=float(getattr(settings, "email_template_underperforming_min_reply_rate", 1.0) or 1.0),
-    )
-    result["email_campaign_summary"] = {
-        "campaign_id": campaign_id,
-        "status": campaign.get("status", "draft") if campaign else "draft",
-        "sequences_total": len(sequences),
-        "sent_count": store.count_messages_for_campaign(campaign_id, status="sent"),
-        "failed_count": store.count_messages_for_campaign(campaign_id, status="failed"),
-        "pending_count": store.count_messages_for_campaign(campaign_id, status="pending"),
-        "replied_count": sum(1 for seq in sequences if seq.get("status") == "replied"),
-        "template_summary": list(template_summary.values()),
-    }
-    generated_sequences = result.get("email_sequences")
-    if isinstance(generated_sequences, list):
-        for sequence in generated_sequences:
-            if not isinstance(sequence, dict):
-                continue
-            template_id = str(sequence.get("template_id") or "")
-            if template_id and template_id in template_summary:
-                performance = template_summary[template_id]
-                sequence["template_assigned_count"] = performance.get("assigned_count", sequence.get("template_assigned_count", 0))
-                sequence["template_remaining_capacity"] = performance.get("remaining_capacity", sequence.get("template_remaining_capacity", 0))
-                sequence["template_performance"] = {
-                    "sent_count": performance.get("sent_count", 0),
-                    "replied_count": performance.get("replied_count", 0),
-                    "reply_rate": performance.get("reply_rate", 0.0),
-                    "status": performance.get("status", "warming_up"),
-                    "optimization_needed": bool(performance.get("optimization_needed", False)),
-                    "recommended_action": str(performance.get("recommended_action", "keep_collecting_data") or "keep_collecting_data"),
-                    "reason": str(performance.get("reason", "") or ""),
-                }
-    save_hunt(hunt_id, hunt)
 
 
 class CreateCampaignRequest(BaseModel):
@@ -300,7 +255,6 @@ async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
                 })
             store.update_sequence_status(sequence_id, status="scheduled", updated_at=created, next_scheduled_at=next_scheduled)
 
-    _write_summary_to_hunt(store, hunt_id, campaign_id)
     summary = _campaign_summary(store, campaign_id)
     return CampaignResponse(campaign_id=campaign_id, status="draft", sequence_count=summary["sequence_count"])
 
@@ -327,7 +281,7 @@ async def start_email_campaign(campaign_id: str):
         _default_account(store)
     updated = now_iso()
     store.update_campaign_status(campaign_id, "active", updated_at=updated)
-    _write_summary_to_hunt(store, str(campaign["hunt_id"]), campaign_id)
+
     return {"campaign_id": campaign_id, "status": "active"}
 
 
@@ -339,7 +293,7 @@ async def pause_email_campaign(campaign_id: str):
         raise HTTPException(status_code=404, detail="Campaign not found")
     updated = now_iso()
     store.update_campaign_status(campaign_id, "paused", updated_at=updated)
-    _write_summary_to_hunt(store, str(campaign["hunt_id"]), campaign_id)
+
     return {"campaign_id": campaign_id, "status": "paused"}
 
 
