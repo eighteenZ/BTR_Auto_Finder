@@ -138,14 +138,45 @@ cp "$ROOT/.env.example" "$WORK/payload/"
   echo '```'
   echo
   echo "⚠️ 拆分模式与合并模式二选一部署；EMAIL_AUTO_SEND_ENABLED 只能由一个进程承载，否则双发。"
-  echo "⚠️ 升级：重新拉取 release 分支后，pip install --force-reinstall 新 wheel 并重启两个服务。"
+  echo
+  echo "## 5. 升级"
+  echo
+  echo "release 分支现在是线性累积的，升级就是普通快进拉取。建议先固定拉取策略，避免误产生 merge："
+  echo '```bash'
+  echo "cd /opt/ai-hunter && git config pull.ff only"
+  echo '```'
+  echo
+  echo "**首次过渡（仅需一次）**：早期版本的 release 提交是各自独立重建的，与你本地已有的提交没有共同祖先，"
+  echo "直接 pull 会提示 divergent branches。执行一次："
+  echo '```bash'
+  echo "git fetch origin release && git reset --hard origin/release"
+  echo '```'
+  echo "> \`.env\` 与 \`.venv\` 未被 git 跟踪（分支自带 .gitignore），\`reset --hard\` 不会删除它们。"
+  echo
+  echo "**之后每次升级**："
+  echo '```bash'
+  echo "cd /opt/ai-hunter"
+  echo "git pull                                   # 快进拉取新产物"
+  echo ".venv/bin/pip install --force-reinstall -r requirements.lock.txt ai_hunter-*.whl"
+  echo "# 若 schema.sql 有新表（升级说明会指出）: psql \"<psql url>\" -f schema.sql"
+  echo "systemctl restart ai-hunter-api ai-marketing-api"
+  echo "curl -s :8000/api/v1/health && curl -s :8100/api/v1/health"
+  echo '```'
+  echo
   echo "完整 API 说明见 docs/API.md。"
 } > "$WORK/payload/DEPLOY.md"
 ls -la "$WORK/payload"
 
-echo "── 5/6 commit orphan branch '$RELEASE_BRANCH' (plumbing — never touches the working tree)"
+echo "── 5/6 commit branch '$RELEASE_BRANCH' (plumbing — never touches the working tree)"
 START_BRANCH="$(git branch --show-current)"
 START_SHA="$(git rev-parse --short "$START_BRANCH")"
+
+# Parent the new release commit on the previous release tip so the branch is a
+# linear chain: servers can then `git pull` (fast-forward) instead of hitting
+# "divergent branches" against a rebuilt orphan. Prefer origin's tip — that is
+# the chain servers actually hold.
+RELEASE_PARENT="$(git rev-parse --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH" \
+                  || git rev-parse --verify --quiet "refs/heads/$RELEASE_BRANCH" || true)"
 
 # Build the release tree in a side index so the main checkout, .venv and .env
 # are never modified. Earlier versions cleared the working tree here and
@@ -183,7 +214,14 @@ TREE="$(git write-tree)"
 cp -rn "$WORK/payload/.git/objects/." "$ROOT/.git/objects/" 2>/dev/null || true
 cd "$ROOT"
 rm -rf "$WORK/payload/.git"
-COMMIT="$(git commit-tree "$TREE" -m "release: $(basename "$WHEEL") build from $START_BRANCH @ $START_SHA")"
+MSG="release: $(basename "$WHEEL") build from $START_BRANCH @ $START_SHA"
+if [ -n "$RELEASE_PARENT" ]; then
+  COMMIT="$(git commit-tree "$TREE" -p "$RELEASE_PARENT" -m "$MSG")"
+  echo "  parent: ${RELEASE_PARENT:0:8} (fast-forwardable)"
+else
+  COMMIT="$(git commit-tree "$TREE" -m "$MSG")"
+  echo "  parent: none (first release build)"
+fi
 git update-ref "refs/heads/$RELEASE_BRANCH" "$COMMIT"
 echo "  → $RELEASE_BRANCH = ${COMMIT:0:8}"
 echo "── 6/6 cleanup"
