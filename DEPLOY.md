@@ -2,10 +2,25 @@
 
 本分支只含编译产物与部署文件，无源码。以下命令在服务器执行（需 Python >= 3.11 与 PostgreSQL 14+）。
 
-## 1. 拉取与安装
+## 1. 环境准备与安装
+
+需要 Python **>= 3.11**（项目与依赖均已验证 3.11/3.12）。先确认系统自带版本：
+```bash
+python3 --version
+```
+- `3.11` / `3.12` / `3.13`（Ubuntu 24.04、Debian 12 自带）→ 直接用 `python3`
+- `3.10` 或更低（Ubuntu 22.04 / 20.04）→ 默认源里没有新版 Python（`apt install python3.11` 会报 Unable to locate package），需加 PPA：
+```bash
+sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt update
+sudo apt install -y python3.12 python3.12-venv
+# 之后把下面命令里的 <PY> 换成 python3.12
+```
+
+安装（`<PY>` 为上面确定的可执行名，如 `python3`）：
 ```bash
 git clone -b release <repo_url> /opt/ai-hunter && cd /opt/ai-hunter
-python3.11 -m venv .venv   # Ubuntu 缺模块时: apt install python3.11-venv
+sudo apt install -y <PY>-venv        # 提供 venv 模块（缺它时报 ensurepip is not available）
+<PY> -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install ai_hunter-*.whl -r requirements.lock.txt
 ```
