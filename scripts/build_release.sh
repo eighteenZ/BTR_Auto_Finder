@@ -103,10 +103,16 @@ cp "$ROOT/.env.example" "$WORK/payload/"
   echo "git clone -b $RELEASE_BRANCH <repo_url> /opt/ai-hunter && cd /opt/ai-hunter"
   echo "python3.11 -m venv .venv   # Ubuntu 缺模块时: apt install python3.11-venv"
   echo ".venv/bin/pip install --upgrade pip"
-  echo "# 国内服务器建议加镜像加速（官方源在国内可能只有 ~86KB/s）:"
-  echo "#   -i https://mirrors.aliyun.com/pypi/simple/"
-  echo ".venv/bin/pip install -i https://mirrors.aliyun.com/pypi/simple/ ai_hunter-*.whl -r requirements.lock.txt"
+  echo ".venv/bin/pip install ai_hunter-*.whl -r requirements.lock.txt"
   echo '```'
+  echo
+  echo "> 中国大陆服务器才需要镜像加速（官方源约 86KB/s）："
+  echo "> \`pip install -i https://mirrors.aliyun.com/pypi/simple/ ...\`"
+  echo "> 其他区域（美国/欧洲/新加坡等）直接用官方 PyPI 即可。"
+  echo
+  echo "⚠️ 已知限制：发送调度器只按 \`scheduled_at\` 判定，**不检查工作时间、时区、工作日或每日/每小时限流**"
+  echo "（这些配置项存在但未被消费）。邮件会在 campaign 启动后按 0/3/7 天偏移随时发出，"
+  echo "放量节奏需自行控制（如分小批建 campaign）。"
   echo
   echo "## 2. 配置与建库"
   echo '```bash'

@@ -116,6 +116,8 @@ GET  :8100/api/v1/email-sequences/{sequence_id}
 
 `EMAIL_AUTO_SEND_ENABLED=true` 时调度器每 60 秒扫描到期消息：三步序列按生成时标注的第 0/3/7 天发送；发送正文经过**确定性净化**（签名占位符替换、联系方式行重写、招聘邮箱降权）。手动触发：`POST :8100/api/v1/email-scheduler/run`。
 
+> ⚠️ **发送窗口限制（当前实现）**：调度器仅按 `scheduled_at <= now` 判定，**不检查工作时间 / 时区 / 工作日 / 每日与每小时限流**（`EMAIL_TIMEZONE`、`EMAIL_BUSINESS_HOURS_*`、`EMAIL_WEEKDAYS_ONLY`、`EMAIL_DAILY_SEND_LIMIT`、`EMAIL_HOURLY_SEND_LIMIT` 目前只在设置接口可读写，未被调度器消费）。因此邮件会在 campaign 启动后按天偏移随时发出；如需控制送达时段或放量节奏，请在调用侧分批建 campaign。
+
 单封手动直发（审批后）：`POST :8100/api/v1/email-drafts/{draft_id}/send` `{"sequence_number": 1}`
 
 ### ⑥ 回信检测（marketing，自动）
