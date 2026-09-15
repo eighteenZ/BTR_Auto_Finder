@@ -31,6 +31,11 @@ from emailing.store import EmailStore
 
 logger = logging.getLogger(__name__)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s [%(name)s] %(message)s",
+)
+
 CAMPAIGN_JOBS_POLL_SECONDS = 30
 
 

@@ -1,12 +1,12 @@
 [Unit]
-Description=AI Hunter API
-After=network.target
+Description=AI Hunter API (lead acquisition service)
+After=network.target postgresql.service
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/ai-hunter
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/ai-hunter/.venv/bin/python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
+ExecStart=/opt/ai-hunter/.venv/bin/python -m uvicorn api.hunter_app:create_hunter_app --factory --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
 

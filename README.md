@@ -114,6 +114,29 @@ flowchart TB
 | 队列/调度 | `automation/` + `emailing/` | 任务队列、邮件发送与回信检测 |
 | 工具 | `tools/` | 搜索、抓取、LLM、解析、联系方式抽取 |
 
+### 服务拓扑（获客与邮件营销解耦）
+
+获客（hunter）与邮件营销（marketing）是**两个独立服务，仅通过 PostgreSQL 交互**：
+
+```text
+┌─────────────────────────┐        ┌──────────────────────────────┐
+│ hunter-api  (:8000)     │        │ marketing-api  (:8100)       │
+│ 获客流水线/队列/线索/SSE │        │ 草稿审批/营销活动/调度/回信 │
+│ email_craft 草稿生成    │        │ campaign_jobs 消费者         │
+└───────────┬─────────────┘        └───────────▲──────────────────┘
+            │ 写 email_drafts                  │ 读 email_drafts（审批后建营销活动）
+            │ 写 campaign_jobs ────────────────┤ 认领 campaign_jobs
+            ▼                                  ▼
+        ┌────────────── PostgreSQL（唯一交互边界）──────────────┐
+        │ hunts/leads/...  email_drafts  campaign_jobs  email_* │
+        └───────────────────────────────────────────────────────┘
+```
+
+- 契约表：`email_drafts`（获客侧写草稿，营销侧审批/消费，人工审批状态不被覆写）、`campaign_jobs`（获客侧入队建营销活动请求，营销侧 `FOR UPDATE SKIP LOCKED` 认领执行）
+- 边界规则：各服务只写本域表，跨域只读；邮件侧不再回写 hunts 行（营销活动摘要由 `GET /api/v1/hunts/{id}/email-campaigns` 实时聚合）
+- 启动方式二选一（**不可同时**，否则调度器双发）：拆分部署 `api.hunter_app` + `api.marketing_app`（见 `deploy/systemd/`），或开发用合并模式 `api.app:app`
+- 存量草稿迁移：`python scripts/backfill_email_drafts.py`
+
 ### 数据模型
 
 ```mermaid
@@ -228,11 +251,17 @@ cp .env.example .env
 # 编辑 .env，至少设置 DATABASE_URL 与模型/搜索 Key
 
 alembic upgrade head            # 建表
-uvicorn api.app:app --host 127.0.0.1 --port 8000
+
+# 拆分部署（生产推荐，二选一）
+uvicorn api.hunter_app:create_hunter_app --factory --host 127.0.0.1 --port 8000
+uvicorn api.marketing_app:create_marketing_app --factory --host 127.0.0.1 --port 8100
+
+# 或开发用合并模式（单进程全功能）
+# uvicorn api.app:app --host 127.0.0.1 --port 8000
 ```
 
-- API：`http://127.0.0.1:8000`
-- Swagger：`http://127.0.0.1:8000/docs`
+- hunter API：`http://127.0.0.1:8000`（Swagger：`/docs`）
+- marketing API：`http://127.0.0.1:8100`（Swagger：`/docs`；邮件相关接口全部在此服务）
 
 所有运行时密钥与参数都放在项目根目录的 `.env`。也可以通过 `Settings API` 写入，需在 `.env` 中设置 `SETTINGS_API_ENABLED=true`。
 
