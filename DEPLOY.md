@@ -1,85 +1,212 @@
 # AI Hunter 部署指南（release 分支）
 
-本分支只含编译产物与部署文件，无源码。以下命令在服务器执行（需 Python >= 3.11 与 PostgreSQL 14+）。
+本分支只含编译产物与部署文件，无源码。全部命令在服务器执行。
 
-## 1. 环境准备与安装
+**前置要求**：Ubuntu 22.04+ / Debian 12+（或同等发行版）、Python >= 3.11、PostgreSQL >= 14、可访问 PyPI 与 LLM/搜索 API。
 
-需要 Python **>= 3.11**（项目与依赖均已验证 3.11/3.12）。先确认系统自带版本：
 ```bash
-python3 --version
+export REPO=https://github.com/eighteenZ/BTR_Auto_Finder.git
+export APP_DIR=/opt/ai-hunter
 ```
-- `3.11` / `3.12` / `3.13`（Ubuntu 24.04、Debian 12 自带）→ 直接用 `python3`
-- `3.10` 或更低（Ubuntu 22.04 / 20.04）→ 默认源里没有新版 Python（`apt install python3.11` 会报 Unable to locate package），需加 PPA：
+
+## 1. 安装系统依赖
+
+```bash
+sudo apt update
+sudo apt install -y git python3-venv python3-pip
+python3 --version          # 需 >= 3.11（Ubuntu 24.04 自带 3.12；Debian 12 自带 3.11）
+```
+
+若版本 <= 3.10（Ubuntu 22.04 自带 3.10），默认源没有新版 Python，需加 PPA：
+
 ```bash
 sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt update
 sudo apt install -y python3.12 python3.12-venv
-# 之后把下面命令里的 <PY> 换成 python3.12
+# 之后把所有命令里的 python3 换成 python3.12
 ```
 
-安装（`<PY>` 为上面确定的可执行名，如 `python3`）：
+> 报 `ensurepip is not available` = 缺 `python3-venv`（或对应版本的 `python3.X-venv`）包，装它即可。
+
+## 2. 拉取产物并安装依赖
+
 ```bash
-git clone -b release <repo_url> /opt/ai-hunter && cd /opt/ai-hunter
-sudo apt install -y <PY>-venv        # 提供 venv 模块（缺它时报 ensurepip is not available）
-<PY> -m venv .venv
+sudo mkdir -p "$APP_DIR" && sudo chown "$USER" "$APP_DIR"
+git clone -b release "$REPO" "$APP_DIR"
+cd "$APP_DIR"
+
+python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install ai_hunter-*.whl -r requirements.lock.txt
+.venv/bin/pip install --timeout 180 --retries 10 -r requirements.lock.txt ai_hunter-*.whl
 ```
 
-> 中国大陆服务器才需要镜像加速（官方源约 86KB/s）：
-> `pip install -i https://mirrors.aliyun.com/pypi/simple/ ...`
-> 其他区域（美国/欧洲/新加坡等）直接用官方 PyPI 即可。
+- 中国大陆服务器可加镜像：`-i https://mirrors.aliyun.com/pypi/simple/`
+- 若某个包报 `from versions: none`，通常是索引响应被中断（大包索引页可达 1MB+），已加 `--retries 10` 会自愈；仍失败则换镜像重跑
 
-⚠️ 已知限制：发送调度器只按 `scheduled_at` 判定，**不检查工作时间、时区、工作日或每日/每小时限流**
-（这些配置项存在但未被消费）。邮件会在 campaign 启动后按 0/3/7 天偏移随时发出，
+验证依赖完整：
+
+```bash
+.venv/bin/python -c "import fastapi, sqlalchemy, litellm, langgraph, psycopg, aiohttp; print('OK')"
+```
+
+## 3. 安装并初始化 PostgreSQL
+
+已有 PostgreSQL 14+ 时跳过安装，只做建库建用户。
+
+```bash
+sudo apt install -y postgresql
+sudo systemctl enable --now postgresql
+pg_lsclusters        # 期望：16  main  5432  online
+```
+
+> `systemctl enable postgresql` 报 `Unit file postgresql.service does not exist` = 服务端没装。
+> `postgresql-client-common` 只是客户端包装，不含服务端与集群。
+
+建库建用户（密码换成你自己的，建议纯字母数字，避免 URL 转义问题）：
+
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE USER ai_hunter WITH PASSWORD 'YOUR_PASSWORD';
+CREATE DATABASE ai_hunter OWNER ai_hunter;
+SQL
+```
+
+验证 TCP + 密码认证（应用就是这么连的，管理用的 peer 认证不算）：
+
+```bash
+psql "postgresql://ai_hunter:YOUR_PASSWORD@localhost:5432/ai_hunter" -c "SELECT current_user, current_database();"
+```
+
+## 4. 配置 .env
+
+```bash
+cd "$APP_DIR"
+cp .env.example .env
+vi .env
+```
+
+必填：
+
+| 变量 | 说明 |
+| --- | --- |
+| `DATABASE_URL` | `postgresql+psycopg://ai_hunter:密码@localhost:5432/ai_hunter`（注意 `+psycopg`） |
+| LLM key | 如 `DEEPSEEK_API_KEY`，需与 `LLM_MODEL` / `REASONING_MODEL` 匹配 |
+| `SERPER_API_KEY` | Google Maps 搜索（搜索阶段必需） |
+| `API_ACCESS_TOKEN` | 对外提供服务时必填，否则任何人可调用接口 |
+
+邮件相关（可后置，但发送前必须配）：
+
+| 变量 | 说明 |
+| --- | --- |
+| `EMAIL_FROM_ADDRESS` / `EMAIL_SMTP_USERNAME` | 发信地址，两者相同 |
+| `EMAIL_SMTP_PASSWORD` | 服务商提供的 SMTP 密码（非邮箱登录密码） |
+| `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` | 例：阿里云 DirectMail 美区 `smtpdm-us-east-1.aliyuncs.com`，端口 `80` |
+| `EMAIL_REPLY_TO` | 接收客户回复的邮箱（DirectMail 只发不收） |
+| `EMAIL_AUTO_SEND_ENABLED` | **先保持 false**，SMTP 测试通过后再改为 true |
+
+## 5. 建表
+
+```bash
+cd "$APP_DIR"
+PSQL_URL=$(grep '^DATABASE_URL=' .env | sed 's/^DATABASE_URL=//; s/+psycopg//')
+psql "$PSQL_URL" -f schema.sql
+psql "$PSQL_URL" -c '\dt'        # 应列出 12 张表
+```
+
+> schema 只建表，不需要扩展或特殊权限；仅能在空库上执行一次。
+
+## 6. 启动服务
+
+```bash
+cd "$APP_DIR"
+sudo cp deploy/systemd/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ai-hunter-api ai-marketing-api
+sleep 6
+systemctl is-active ai-hunter-api ai-marketing-api
+```
+
+| 服务 | 端口 | 用途 |
+| --- | --- | --- |
+| ai-hunter-api | 8000 | 获客流水线 / 队列 / 线索库 / SSE（Swagger `/docs`） |
+| ai-marketing-api | 8100 | 草稿审批 / campaign / 发送 / 回信检测（审批页 `/review`，Swagger `/docs`） |
+
+排障：`sudo journalctl -u ai-hunter-api -n 50 --no-pager`
+
+## 7. 验证
+
+```bash
+curl -s localhost:8000/api/v1/health; echo
+curl -s localhost:8100/api/v1/health; echo
+```
+
+端到端（会消耗少量 LLM 额度）：
+
+```bash
+curl -s -X POST localhost:8000/api/v1/hunts -H 'Content-Type: application/json' \
+  -d '{"website_url":"https://example.com/","description":"Find US importers buying from China","product_keywords":["importer of Chinese goods"],"target_regions":["United States"],"target_lead_count":1,"max_rounds":1,"enable_email_craft":false}'
+# 轮询 /api/v1/hunts/{hunt_id}/status 至 completed，然后核对落库：
+psql "$PSQL_URL" -c 'SELECT count(*) FROM hunts;'    # 应 > 0
+```
+
+> ⚠️ 这步落库验证必须做。存储层在写库失败时只打 warning、不会让任务失败，
+> 所以 `DATABASE_URL` 填错时服务看起来完全正常（health 返回 ok），但数据一条都不落库。
+
+## 8. 安全
+
+```bash
+# 1) 生成并填入 API_ACCESS_TOKEN，然后重启
+openssl rand -hex 32
+
+# 2) 只放行需要对外提供的端口
+sudo ufw allow 8000/tcp
+sudo ufw allow 8100/tcp
+
+# 3) 确认数据库未对外暴露
+sudo ss -tlnp | grep 5432        # 应只监听 127.0.0.1
+```
+
+## 9. 邮件启用顺序
+
+```bash
+curl -X POST localhost:8100/api/settings/email/test         # SMTP 连通（发送资格的前置条件）
+curl -X POST localhost:8100/api/settings/email/imap-test    # 回信检测需要
+# 通过后把 .env 的 EMAIL_AUTO_SEND_ENABLED 改为 true，重启 ai-marketing-api
+```
+
+## 10. 已知限制
+
+发送调度器只按 `scheduled_at` 判定，**不检查工作时间、时区、工作日、每日/每小时限流**
+（配置项存在但未被消费）。邮件会在 campaign 启动后按 0/3/7 天偏移随时发出，
 放量节奏需自行控制（如分小批建 campaign）。
 
-## 2. 配置与建库
-```bash
-cp .env.example .env && vi .env
-# 必填: DATABASE_URL / LLM 提供商 key / SERPER_API_KEY
-# 邮件: EMAIL_SMTP_* + EMAIL_FROM_ADDRESS（发送前先跑 :8100/api/settings/email/test）
+## 11. 升级
 
-# 建表（在空库上执行一次，把 .env 里的 DATABASE_URL 从 postgresql+psycopg:// 改成 postgresql:// 后使用）:
-psql "<postgresql://user:pass@host:port/dbname>" -f schema.sql
+release 分支是线性累积的，升级即快进拉取。先固定拉取策略，避免误产生 merge：
+
+```bash
+cd "$APP_DIR" && git config pull.ff only
 ```
 
-## 3. systemd 服务
-```bash
-cp deploy/systemd/*.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now ai-hunter-api ai-marketing-api
-```
-- hunter: `http://<host>:8000`（Swagger /docs）
-- marketing: `http://<host>:8100`（人工审批页 /review，Swagger /docs）
-
-## 4. 验证
-```bash
-curl :8000/api/v1/health && curl :8100/api/v1/health
-```
-
-⚠️ 拆分模式与合并模式二选一部署；EMAIL_AUTO_SEND_ENABLED 只能由一个进程承载，否则双发。
-
-## 5. 升级
-
-release 分支现在是线性累积的，升级就是普通快进拉取。建议先固定拉取策略，避免误产生 merge：
-```bash
-cd /opt/ai-hunter && git config pull.ff only
-```
-
-**首次过渡（仅需一次）**：早期版本的 release 提交是各自独立重建的，与你本地已有的提交没有共同祖先，
+**首次过渡（仅需一次）**：早期版本的 release 提交是各自独立重建的，与本地已有提交没有共同祖先，
 直接 pull 会提示 divergent branches。执行一次：
+
 ```bash
 git fetch origin release && git reset --hard origin/release
 ```
+
 > `.env` 与 `.venv` 未被 git 跟踪（分支自带 .gitignore），`reset --hard` 不会删除它们。
 
 **之后每次升级**：
+
 ```bash
-cd /opt/ai-hunter
+cd "$APP_DIR"
 git pull                                   # 快进拉取新产物
 .venv/bin/pip install --force-reinstall -r requirements.lock.txt ai_hunter-*.whl
-# 若 schema.sql 有新表（升级说明会指出）: psql "<psql url>" -f schema.sql
-systemctl restart ai-hunter-api ai-marketing-api
-curl -s :8000/api/v1/health && curl -s :8100/api/v1/health
+# 若升级说明提到新表： psql "$PSQL_URL" -f schema.sql
+sudo systemctl restart ai-hunter-api ai-marketing-api
 ```
+
+⚠️ 拆分模式与合并模式（`api.app:app`）二选一部署；`EMAIL_AUTO_SEND_ENABLED` 只能由一个进程承载，
+否则同一封邮件会被两个调度器重复发送。
 
 完整 API 说明见 docs/API.md。
