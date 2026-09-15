@@ -4,6 +4,16 @@ version = "0.1.0"
 description = "Multi-agent B2B lead hunting system powered by LangGraph"
 requires-python = ">=3.11"
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["api", "agents", "automation", "config", "emailing", "graph", "observability", "persistence", "prompts", "services", "tools"]
+
+[tool.setuptools.package-data]
+api = ["static/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

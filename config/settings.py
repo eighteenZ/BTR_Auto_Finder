@@ -35,11 +35,16 @@ def _resolve_env_file() -> str:
 
     - Packaged (PyInstaller frozen binary): user app-data dir so the file
       survives app updates and is writable by the user.
-    - Dev / bare Python: local .env next to the current working directory.
+    - Wheel install: site-packages is read-only-ish and not a deployment
+      dir — prefer the current working directory (systemd WorkingDirectory).
+    - Dev / bare Python: local .env next to the project root.
     """
     d = _app_data_dir()
     if d is not None:
         return str(d / ".env")
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.is_file():
+        return str(cwd_env)
     return str(_PROJECT_ROOT / ".env")
 
 

@@ -1,0 +1,188 @@
+# AI Hunter API 集成文档（面向 openclaw）
+
+> 版本：v1.0（hunter/marketing 拆分架构）｜ 机器可读规格：`openapi-hunter.json` / `openapi-marketing.json`（与本文档同目录发布）
+
+## 1. 架构概览
+
+系统由两个独立服务组成，仅通过 PostgreSQL 交互，可分开部署、分开扩容：
+
+| 服务 | 默认端口 | 职责 |
+|---|---|---|
+| **hunter** | `:8000` | 获客：创建任务、LangGraph 流水线（解析→洞察→关键词→搜索→线索提取→评估→邮件草稿生成）、自动化队列、全局线索库、SSE 进度流 |
+| **marketing** | `:8100` | 邮件营销：草稿审批、campaign 生命周期、定时发送调度、IMAP 回信检测、邮件设置 |
+
+```text
+openclaw ──HTTP──▶ hunter(:8000)                     openclaw ──HTTP──▶ marketing(:8100)
+                    │ 写 email_drafts（草稿契约表）                      │ 读 email_drafts（审批后建 campaign）
+                    │ 写 campaign_jobs（建campaign请求）                 │ 认领 campaign_jobs（挂起等审批，5分钟回查）
+                    ▼                                                  ▼
+                          PostgreSQL（两服务唯一交互边界）
+```
+
+- 健康检查：`GET :8000/api/v1/health`、`GET :8100/api/v1/health`
+- Swagger UI：两服务各自的 `/docs`
+
+## 2. 认证
+
+所有业务端点（除 health）需要认证：设置 `API_ACCESS_TOKEN` 后，请求须携带（三选一）：
+
+```http
+X-API-Key: <token>
+Authorization: Bearer <token>
+GET /api/v1/hunts?api_key=<token>
+```
+
+- **localhost 来源的请求免鉴权**（本机调试友好）
+- 未认证返回 `401/403`
+
+## 3. 核心工作流（时序）
+
+```text
+① 创建获客任务 ──▶ ② 轮询进度/收线索 ──▶ ③ 审批邮件草稿 ──▶ ④ campaign 自动/手动建立 ──▶ ⑤ 调度器自动发送 ──▶ ⑥ 回信检测停止跟进
+```
+
+### ① 创建获客任务（hunter）
+
+**方式 A：直连**（立即后台执行）
+
+```bash
+curl -X POST http://<host>:8000/api/v1/hunts -H 'Content-Type: application/json' -d '{
+  "website_url": "https://example.com/",
+  "description": "Find US importers who buy from China... (同行排除写清楚)",
+  "product_keywords": ["importer of Chinese goods"],
+  "target_customer_profile": "US importers; exclude freight forwarders",
+  "target_regions": ["United States"],
+  "target_lead_count": 5,
+  "max_rounds": 1,
+  "enable_email_craft": true,
+  "email_template_notes": "签名规范与禁止编造的约束说明"
+}'
+# → {"hunt_id": "<uuid>", "status": "pending"}
+```
+
+**方式 B：队列**（持久化队列，进程重启不丢，支持全自动链路）
+
+```bash
+curl -X POST http://<host>:8000/api/v1/automation/jobs -d '{...同上字段...}'
+# → {"job_id": "<uuid>", "status": "queued"}
+```
+
+队列任务完成后，若 payload 含 `enable_email_craft: true` 且服务端 `AUTOMATION_CONSUMER_AUTO_START_CAMPAIGN=true`，hunter 会**自动向 `campaign_jobs` 表入队一条建 campaign 请求**，由 marketing 消费——这是全自动链路的入口。
+
+### ② 轮询进度与获取结果（hunter）
+
+```bash
+GET /api/v1/hunts/{hunt_id}/status     # status: pending→running→completed|failed|cancelled
+GET /api/v1/automation/jobs/{job_id}   # 队列态 + last_hunt_id + leads_count
+GET /api/v1/hunts/{hunt_id}/result     # 线索全量 + 摘要（草稿明细请到 marketing 查）
+GET /api/v1/leads?limit=50             # 全局线索库（跨 hunt 去重累积）
+```
+
+实时进度（可选）：`GET /api/v1/hunts/{hunt_id}/stream`（SSE），事件见 §5。
+
+### ③ 审批邮件草稿（marketing）
+
+任务完成后草稿写入 `email_drafts` 表，状态 `draft`。审批前**任何邮件都不可能发出**。
+
+```bash
+# 列出待审草稿（含三封邮件全文/收件人/校验摘要）
+GET :8100/api/v1/email-drafts?status=draft
+GET :8100/api/v1/hunts/{hunt_id}/email-drafts
+
+# 审批 / 拒绝（可附备注）
+POST :8100/api/v1/email-drafts/{draft_id}/decision
+{"decision": "approved", "notes": "ok"}
+```
+
+- 人工页面：`GET :8100/review`（列表 + 全文预览 + 批准/拒绝按钮）
+- 兼容旧路径：`POST :8100/api/v1/hunts/{hunt_id}/email-sequences/{index}/decision`
+
+**campaign_jobs 挂起机制**（全自动链路的关键）：队列路径的建 campaign 请求在草稿未决时**不会结束**，marketing 每 5 分钟回查一次；任一草稿被批准后自动建 campaign 并启动发送；全部拒绝则任务关闭；**72 小时**无人审批任务超时关闭（草稿本身永久保留，可事后手动建 campaign）。
+
+### ④ campaign 管理（marketing）
+
+```bash
+# 手动建 campaign（只收已批准草稿；全自动路径无需此步）
+POST :8100/api/v1/hunts/{hunt_id}/email-campaigns   {"name": "Batch 1"}
+# 启动 / 暂停（启动前需 SMTP 测试通过：POST :8100/api/settings/email/test）
+POST :8100/api/v1/email-campaigns/{campaign_id}/start
+POST :8100/api/v1/email-campaigns/{campaign_id}/pause
+# 查询（实时聚合：序列数/已发/待发/失败/回信/模板表现）
+GET  :8100/api/v1/hunts/{hunt_id}/email-campaigns
+GET  :8100/api/v1/email-sequences/{sequence_id}
+```
+
+### ⑤ 定时发送（marketing，自动）
+
+`EMAIL_AUTO_SEND_ENABLED=true` 时调度器每 60 秒扫描到期消息：三步序列按生成时标注的第 0/3/7 天发送；发送正文经过**确定性净化**（签名占位符替换、联系方式行重写、招聘邮箱降权）。手动触发：`POST :8100/api/v1/email-scheduler/run`。
+
+单封手动直发（审批后）：`POST :8100/api/v1/email-drafts/{draft_id}/send` `{"sequence_number": 1}`
+
+### ⑥ 回信检测（marketing，自动）
+
+`EMAIL_REPLY_DETECTION_ENABLED=true` + IMAP 配置后，检测到客户回复即把序列标记 `replied` 并自动取消后续跟进信。手动触发：`POST :8100/api/v1/email-replies/check`。
+
+## 4. 端点参考
+
+### hunter（:8000）
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/v1/health` | 健康检查 |
+| POST | `/api/v1/upload` | 上传资料文件（≤50MB，txt/md/pdf/docx/xlsx/csv/json） |
+| POST | `/api/v1/hunts` | 创建获客任务（直连后台执行） |
+| GET | `/api/v1/hunts` | 任务列表 |
+| GET | `/api/v1/hunts/{id}/status` | 状态/阶段/轮次/计数 |
+| GET | `/api/v1/hunts/{id}/result` | 完整结果（线索/关键词/统计） |
+| GET | `/api/v1/hunts/{id}/cost` | Token 成本摘要 |
+| POST | `/api/v1/hunts/{id}/resume` | 续跑已结束任务 |
+| GET | `/api/v1/hunts/{id}/stream` | SSE 实时进度 |
+| GET | `/api/v1/leads` | 全局线索库（`status=`、`domain=`、`hunt_id=` 过滤） |
+| GET | `/api/v1/leads/{id}` | 线索详情（含出现历史） |
+| GET | `/api/v1/hunts/{id}/leads` | 任务的线索 |
+| POST | `/api/v1/automation/jobs` | 入队获客任务 |
+| GET | `/api/v1/automation/jobs[/{id}]` | 队列查询（含 `last_hunt_id`/进度） |
+| POST | `/api/v1/automation/jobs/{id}/cancel` · `/{id}/retry` | 取消/重试 |
+| GET | `/api/v1/automation/status` · `/metrics` · `/health` | 队列状态/指标/积压健康检查 |
+| POST | `/api/v1/email-template-seeds/prepare` | 预生成邮件模板种子 |
+
+### marketing（:8100）
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/v1/health` | 健康检查 |
+| GET | `/review` | 人工审批页（浏览器） |
+| GET | `/api/v1/email-drafts` | 草稿列表（`status=draft/approved/rejected`、`hunt_id=`） |
+| GET | `/api/v1/hunts/{hunt_id}/email-drafts` | 某任务的草稿 |
+| POST | `/api/v1/email-drafts/{id}/decision` | 审批/拒绝（批准即触发自动建 campaign） |
+| POST | `/api/v1/email-drafts/{id}/send` | 手动单发某一步（需先批准） |
+| POST | `/api/v1/hunts/{hunt_id}/email-campaigns` | 建 campaign（只收已批准草稿） |
+| GET | `/api/v1/hunts/{hunt_id}/email-campaigns` | campaign 列表 + 实时摘要 |
+| POST | `/api/v1/email-campaigns/{id}/start` · `/pause` | 启动/暂停 |
+| GET | `/api/v1/email-sequences/{id}` | 序列详情（消息/回信事件） |
+| POST | `/api/v1/email-scheduler/run` | 手动触发一次发送调度 |
+| POST | `/api/v1/email-replies/check` | 手动触发一次回信检测 |
+| GET/POST | `/api/settings` | 设置读写（脱敏返回） |
+| POST | `/api/settings/email/test` · `/email/imap-test` | SMTP/IMAP 连通测试 |
+
+## 5. SSE 事件（`/api/v1/hunts/{id}/stream`）
+
+`stage_change`（阶段切换）、`stage_data`（阶段明细）、`round_change`（搜索轮次）、`progress`（计数心跳）、`lead_progress`（逐线索产出）、`completed`、`failed`、`heartbeat`。
+
+队列任务另有 `GET /api/v1/automation/jobs/{job_id}/stream`。
+
+## 6. 错误码语义
+
+| 码 | 场景 |
+|---|---|
+| 401/403 | 缺失/错误 API token（非 localhost） |
+| 404 | hunt/草稿/campaign/序列不存在 |
+| 409 | 前置条件不满足：SMTP 未配置/未测试、草稿未批准即发送、campaign 重复启动 |
+| 422 | 请求字段非法（如线索数为 0） |
+| 400 | 上游执行失败（SMTP 拒绝等，detail 带原因） |
+
+## 7. 部署与配置
+
+见同目录 `DEPLOY.md`；全部配置项见 `.env.example`。关键项：`DATABASE_URL`（两服务同库）、`API_ACCESS_TOKEN`、LLM/搜索 Key、`EMAIL_AUTO_SEND_ENABLED`、`AUTOMATION_CONSUMER_AUTO_START_CAMPAIGN`。
+
+> ⚠️ 调度器单例约束：hunter/marketing 拆分模式与合并模式（api.app）二选一部署，否则邮件会双发。
