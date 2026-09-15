@@ -1,0 +1,1836 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI Hunter Marketing API",
+    "description": "Email outreach: draft review, campaigns, scheduling, replies.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Marketing Health",
+        "operationId": "marketing_health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/email-drafts": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "List Hunt Email Drafts",
+        "operationId": "list_hunt_email_drafts_api_v1_hunts__hunt_id__email_drafts_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-drafts": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "List Email Drafts",
+        "operationId": "list_email_drafts_api_v1_email_drafts_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "hunt_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-drafts/{draft_id}/decision": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Decide Email Draft",
+        "description": "Approve or reject a generated outreach draft.",
+        "operationId": "decide_email_draft_api_v1_email_drafts__draft_id__decision_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftDecisionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-drafts/{draft_id}/send": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Send Email Draft",
+        "description": "Manually send one step of an approved draft via SMTP.",
+        "operationId": "send_email_draft_api_v1_email_drafts__draft_id__send_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/email-campaigns": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Create Email Campaign",
+        "operationId": "create_email_campaign_api_v1_hunts__hunt_id__email_campaigns_post",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCampaignRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "List Email Campaigns",
+        "operationId": "list_email_campaigns_api_v1_hunts__hunt_id__email_campaigns_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-campaigns/{campaign_id}/start": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Start Email Campaign",
+        "operationId": "start_email_campaign_api_v1_email_campaigns__campaign_id__start_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-campaigns/{campaign_id}/pause": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Pause Email Campaign",
+        "operationId": "pause_email_campaign_api_v1_email_campaigns__campaign_id__pause_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-sequences/{sequence_id}": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Get Email Sequence",
+        "operationId": "get_email_sequence_api_v1_email_sequences__sequence_id__get",
+        "parameters": [
+          {
+            "name": "sequence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sequence Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-scheduler/run": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Run Email Scheduler",
+        "operationId": "run_email_scheduler_api_v1_email_scheduler_run_post",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-replies/check": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Run Email Reply Check",
+        "operationId": "run_email_reply_check_api_v1_email_replies_check_post",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Settings Api",
+        "description": "Return current settings with sensitive values partially masked.",
+        "operationId": "get_settings_api_api_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Save Settings",
+        "description": "Save settings to the user's .env file. Empty strings are skipped.",
+        "operationId": "save_settings_api_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/email/test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Email Settings",
+        "description": "Test SMTP connectivity using the current saved settings.",
+        "operationId": "test_email_settings_api_settings_email_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmtpTestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/email/imap-test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Email Imap Settings",
+        "description": "Test IMAP connectivity using the current saved settings.",
+        "operationId": "test_email_imap_settings_api_settings_email_imap_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImapTestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/automation/feishu-test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Automation Feishu Webhook",
+        "description": "Send a test message to the configured Feishu webhook.",
+        "operationId": "test_automation_feishu_webhook_api_settings_automation_feishu_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeishuTestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CampaignResponse": {
+        "properties": {
+          "campaign_id": {
+            "type": "string",
+            "title": "Campaign Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "sequence_count": {
+            "type": "integer",
+            "title": "Sequence Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "campaign_id",
+          "status",
+          "sequence_count"
+        ],
+        "title": "CampaignResponse"
+      },
+      "CreateCampaignRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "Outbound Campaign"
+          }
+        },
+        "type": "object",
+        "title": "CreateCampaignRequest"
+      },
+      "DraftDecisionRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "DraftDecisionRequest"
+      },
+      "DraftDecisionResponse": {
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id"
+          },
+          "hunt_id": {
+            "type": "string",
+            "title": "Hunt Id"
+          },
+          "sequence_index": {
+            "type": "integer",
+            "title": "Sequence Index"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "manual_review": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Manual Review"
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft_id",
+          "hunt_id",
+          "sequence_index",
+          "decision",
+          "manual_review"
+        ],
+        "title": "DraftDecisionResponse"
+      },
+      "FeishuTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "webhook_url": {
+            "type": "string",
+            "title": "Webhook Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "webhook_url"
+        ],
+        "title": "FeishuTestResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImapTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "host",
+          "username"
+        ],
+        "title": "ImapTestResponse"
+      },
+      "SendDraftRequest": {
+        "properties": {
+          "sequence_number": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Sequence Number",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "title": "SendDraftRequest"
+      },
+      "SendDraftResponse": {
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id"
+          },
+          "sequence_number": {
+            "type": "integer",
+            "title": "Sequence Number"
+          },
+          "sent_to": {
+            "type": "string",
+            "title": "Sent To"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft_id",
+          "sequence_number",
+          "sent_to",
+          "subject",
+          "status"
+        ],
+        "title": "SendDraftResponse"
+      },
+      "SettingsPayload": {
+        "properties": {
+          "llm_model": {
+            "type": "string",
+            "title": "Llm Model",
+            "default": ""
+          },
+          "reasoning_model": {
+            "type": "string",
+            "title": "Reasoning Model",
+            "default": ""
+          },
+          "email_llm_model": {
+            "type": "string",
+            "title": "Email Llm Model",
+            "default": ""
+          },
+          "email_reasoning_model": {
+            "type": "string",
+            "title": "Email Reasoning Model",
+            "default": ""
+          },
+          "openai_api_key": {
+            "type": "string",
+            "title": "Openai Api Key",
+            "default": ""
+          },
+          "anthropic_api_key": {
+            "type": "string",
+            "title": "Anthropic Api Key",
+            "default": ""
+          },
+          "openrouter_api_key": {
+            "type": "string",
+            "title": "Openrouter Api Key",
+            "default": ""
+          },
+          "groq_api_key": {
+            "type": "string",
+            "title": "Groq Api Key",
+            "default": ""
+          },
+          "zai_api_key": {
+            "type": "string",
+            "title": "Zai Api Key",
+            "default": ""
+          },
+          "moonshot_api_key": {
+            "type": "string",
+            "title": "Moonshot Api Key",
+            "default": ""
+          },
+          "minimax_api_key": {
+            "type": "string",
+            "title": "Minimax Api Key",
+            "default": ""
+          },
+          "email_openai_api_key": {
+            "type": "string",
+            "title": "Email Openai Api Key",
+            "default": ""
+          },
+          "email_anthropic_api_key": {
+            "type": "string",
+            "title": "Email Anthropic Api Key",
+            "default": ""
+          },
+          "email_openrouter_api_key": {
+            "type": "string",
+            "title": "Email Openrouter Api Key",
+            "default": ""
+          },
+          "email_groq_api_key": {
+            "type": "string",
+            "title": "Email Groq Api Key",
+            "default": ""
+          },
+          "email_zai_api_key": {
+            "type": "string",
+            "title": "Email Zai Api Key",
+            "default": ""
+          },
+          "email_moonshot_api_key": {
+            "type": "string",
+            "title": "Email Moonshot Api Key",
+            "default": ""
+          },
+          "email_minimax_api_key": {
+            "type": "string",
+            "title": "Email Minimax Api Key",
+            "default": ""
+          },
+          "serper_api_key": {
+            "type": "string",
+            "title": "Serper Api Key",
+            "default": ""
+          },
+          "tavily_api_key": {
+            "type": "string",
+            "title": "Tavily Api Key",
+            "default": ""
+          },
+          "jina_api_key": {
+            "type": "string",
+            "title": "Jina Api Key",
+            "default": ""
+          },
+          "email_provider_type": {
+            "type": "string",
+            "title": "Email Provider Type",
+            "default": ""
+          },
+          "email_from_name": {
+            "type": "string",
+            "title": "Email From Name",
+            "default": ""
+          },
+          "email_from_address": {
+            "type": "string",
+            "title": "Email From Address",
+            "default": ""
+          },
+          "email_reply_to": {
+            "type": "string",
+            "title": "Email Reply To",
+            "default": ""
+          },
+          "email_smtp_host": {
+            "type": "string",
+            "title": "Email Smtp Host",
+            "default": ""
+          },
+          "email_smtp_port": {
+            "type": "string",
+            "title": "Email Smtp Port",
+            "default": ""
+          },
+          "email_smtp_username": {
+            "type": "string",
+            "title": "Email Smtp Username",
+            "default": ""
+          },
+          "email_smtp_password": {
+            "type": "string",
+            "title": "Email Smtp Password",
+            "default": ""
+          },
+          "email_smtp_last_test_at": {
+            "type": "string",
+            "title": "Email Smtp Last Test At",
+            "default": ""
+          },
+          "email_imap_host": {
+            "type": "string",
+            "title": "Email Imap Host",
+            "default": ""
+          },
+          "email_imap_port": {
+            "type": "string",
+            "title": "Email Imap Port",
+            "default": ""
+          },
+          "email_imap_username": {
+            "type": "string",
+            "title": "Email Imap Username",
+            "default": ""
+          },
+          "email_imap_password": {
+            "type": "string",
+            "title": "Email Imap Password",
+            "default": ""
+          },
+          "email_imap_last_test_at": {
+            "type": "string",
+            "title": "Email Imap Last Test At",
+            "default": ""
+          },
+          "email_use_tls": {
+            "type": "string",
+            "title": "Email Use Tls",
+            "default": ""
+          },
+          "email_sequence_enabled": {
+            "type": "string",
+            "title": "Email Sequence Enabled",
+            "default": ""
+          },
+          "email_auto_send_enabled": {
+            "type": "string",
+            "title": "Email Auto Send Enabled",
+            "default": ""
+          },
+          "email_step1_delay_days": {
+            "type": "string",
+            "title": "Email Step1 Delay Days",
+            "default": ""
+          },
+          "email_step2_delay_days": {
+            "type": "string",
+            "title": "Email Step2 Delay Days",
+            "default": ""
+          },
+          "email_step3_delay_days": {
+            "type": "string",
+            "title": "Email Step3 Delay Days",
+            "default": ""
+          },
+          "email_business_hours_start": {
+            "type": "string",
+            "title": "Email Business Hours Start",
+            "default": ""
+          },
+          "email_business_hours_end": {
+            "type": "string",
+            "title": "Email Business Hours End",
+            "default": ""
+          },
+          "email_weekdays_only": {
+            "type": "string",
+            "title": "Email Weekdays Only",
+            "default": ""
+          },
+          "email_timezone": {
+            "type": "string",
+            "title": "Email Timezone",
+            "default": ""
+          },
+          "email_daily_send_limit": {
+            "type": "string",
+            "title": "Email Daily Send Limit",
+            "default": ""
+          },
+          "email_hourly_send_limit": {
+            "type": "string",
+            "title": "Email Hourly Send Limit",
+            "default": ""
+          },
+          "email_language_mode": {
+            "type": "string",
+            "title": "Email Language Mode",
+            "default": ""
+          },
+          "email_default_language": {
+            "type": "string",
+            "title": "Email Default Language",
+            "default": ""
+          },
+          "email_fallback_language": {
+            "type": "string",
+            "title": "Email Fallback Language",
+            "default": ""
+          },
+          "email_tone": {
+            "type": "string",
+            "title": "Email Tone",
+            "default": ""
+          },
+          "email_signature_block": {
+            "type": "string",
+            "title": "Email Signature Block",
+            "default": ""
+          },
+          "email_signature_name": {
+            "type": "string",
+            "title": "Email Signature Name",
+            "default": ""
+          },
+          "email_signature_title": {
+            "type": "string",
+            "title": "Email Signature Title",
+            "default": ""
+          },
+          "email_signature_phone": {
+            "type": "string",
+            "title": "Email Signature Phone",
+            "default": ""
+          },
+          "email_llm_requests_per_minute": {
+            "type": "string",
+            "title": "Email Llm Requests Per Minute",
+            "default": ""
+          },
+          "email_reasoning_requests_per_minute": {
+            "type": "string",
+            "title": "Email Reasoning Requests Per Minute",
+            "default": ""
+          },
+          "email_min_fit_score_to_send": {
+            "type": "string",
+            "title": "Email Min Fit Score To Send",
+            "default": ""
+          },
+          "email_min_contactability_score_to_send": {
+            "type": "string",
+            "title": "Email Min Contactability Score To Send",
+            "default": ""
+          },
+          "email_allow_inferred_target": {
+            "type": "string",
+            "title": "Email Allow Inferred Target",
+            "default": ""
+          },
+          "email_allow_generic_company_email": {
+            "type": "string",
+            "title": "Email Allow Generic Company Email",
+            "default": ""
+          },
+          "email_require_approval_before_send": {
+            "type": "string",
+            "title": "Email Require Approval Before Send",
+            "default": ""
+          },
+          "email_reply_detection_enabled": {
+            "type": "string",
+            "title": "Email Reply Detection Enabled",
+            "default": ""
+          },
+          "email_reply_check_interval_seconds": {
+            "type": "string",
+            "title": "Email Reply Check Interval Seconds",
+            "default": ""
+          },
+          "email_template_max_send_count": {
+            "type": "string",
+            "title": "Email Template Max Send Count",
+            "default": ""
+          },
+          "email_template_underperforming_min_assigned": {
+            "type": "string",
+            "title": "Email Template Underperforming Min Assigned",
+            "default": ""
+          },
+          "email_template_underperforming_min_reply_rate": {
+            "type": "string",
+            "title": "Email Template Underperforming Min Reply Rate",
+            "default": ""
+          },
+          "automation_feishu_webhook_url": {
+            "type": "string",
+            "title": "Automation Feishu Webhook Url",
+            "default": ""
+          },
+          "automation_summary_enabled": {
+            "type": "string",
+            "title": "Automation Summary Enabled",
+            "default": ""
+          },
+          "automation_summary_interval_seconds": {
+            "type": "string",
+            "title": "Automation Summary Interval Seconds",
+            "default": ""
+          },
+          "automation_alerts_enabled": {
+            "type": "string",
+            "title": "Automation Alerts Enabled",
+            "default": ""
+          },
+          "automation_alert_interval_seconds": {
+            "type": "string",
+            "title": "Automation Alert Interval Seconds",
+            "default": ""
+          },
+          "automation_alert_backlog_threshold": {
+            "type": "string",
+            "title": "Automation Alert Backlog Threshold",
+            "default": ""
+          },
+          "automation_alert_failed_messages_threshold": {
+            "type": "string",
+            "title": "Automation Alert Failed Messages Threshold",
+            "default": ""
+          },
+          "search_concurrency": {
+            "type": "string",
+            "title": "Search Concurrency",
+            "default": ""
+          },
+          "scrape_concurrency": {
+            "type": "string",
+            "title": "Scrape Concurrency",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "SettingsPayload"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Settings"
+          },
+          "is_configured": {
+            "type": "boolean",
+            "title": "Is Configured"
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings",
+          "is_configured"
+        ],
+        "title": "SettingsResponse"
+      },
+      "SmtpTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "host",
+          "username"
+        ],
+        "title": "SmtpTestResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

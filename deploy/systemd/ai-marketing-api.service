@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Hunter Marketing API (email outreach service)
+After=network.target postgresql.service ai-hunter-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ai-hunter
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/ai-hunter/.venv/bin/python -m uvicorn api.marketing_app:create_marketing_app --factory --host 0.0.0.0 --port 8100
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

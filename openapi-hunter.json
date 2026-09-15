@@ -1,0 +1,3320 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI Hunter API",
+    "description": "Lead hunting: pipeline, automation queue, leads, SSE.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint.",
+        "operationId": "health_check_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/upload": {
+      "post": {
+        "summary": "Upload Files",
+        "description": "Upload one or more files (txt, md, pdf, docx, xlsx, csv) for use as insight source.\n\nReturns a list of server-side file paths to pass as uploaded_file_ids in HuntRequest.",
+        "operationId": "upload_files_api_v1_upload_post",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_files_api_v1_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-template-seeds/prepare": {
+      "post": {
+        "summary": "Prepare Email Template Seed",
+        "operationId": "prepare_email_template_seed_api_v1_email_template_seeds_prepare_post",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateSeedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateSeedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts": {
+      "post": {
+        "summary": "Create Hunt",
+        "description": "Start a new hunt pipeline in the background.\n\nReturns a hunt_id to track progress.",
+        "operationId": "create_hunt_api_v1_hunts_post",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HuntRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuntResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Hunts",
+        "description": "List all hunts with their status.",
+        "operationId": "list_hunts_api_v1_hunts_get",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/status": {
+      "get": {
+        "summary": "Get Hunt Status",
+        "description": "Get the current status of a hunt.",
+        "operationId": "get_hunt_status_api_v1_hunts__hunt_id__status_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuntStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/result": {
+      "get": {
+        "summary": "Get Hunt Result",
+        "description": "Get the full result of a hunt (partial data returned for running/pending hunts).",
+        "operationId": "get_hunt_result_api_v1_hunts__hunt_id__result_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuntResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/cost": {
+      "get": {
+        "summary": "Get Hunt Cost",
+        "description": "Get cost and token usage summary for a hunt.\n\nReturns live stats for running hunts (from in-memory tracker)\nand persisted stats for completed/failed hunts (from result).",
+        "operationId": "get_hunt_cost_api_v1_hunts__hunt_id__cost_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/resume": {
+      "post": {
+        "summary": "Resume Hunt",
+        "description": "Resume a completed hunt, continuing from where it left off.\n\nPreserves: insight, leads, used_keywords, keyword_search_stats, seen_urls.\nResets:    hunt_round, round_feedback, keywords, email_sequences, messages.\nCompresses: search_results trimmed to last 50 rows (URL dedup via seen_urls).\n\nAllows raising target_lead_count and max_rounds to mine deeper.\nBoth completed and failed hunts can be resumed (not running or pending).",
+        "operationId": "resume_hunt_api_v1_hunts__hunt_id__resume_post",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuntResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Create Automation Job",
+        "operationId": "create_automation_job_api_v1_automation_jobs_post",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "List Automation Jobs",
+        "operationId": "list_automation_jobs_api_v1_automation_jobs_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Get Automation Job",
+        "operationId": "get_automation_job_api_v1_automation_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs/by-hunt/{hunt_id}": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Get Automation Job By Hunt",
+        "operationId": "get_automation_job_by_hunt_api_v1_automation_jobs_by_hunt__hunt_id__get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs/from-hunt/{hunt_id}": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Create Automation Job From Hunt",
+        "operationId": "create_automation_job_from_hunt_api_v1_automation_jobs_from_hunt__hunt_id__post",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationJobContinueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Cancel Automation Job",
+        "operationId": "cancel_automation_job_api_v1_automation_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs/{job_id}/retry": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Retry Automation Job",
+        "operationId": "retry_automation_job_api_v1_automation_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/status": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Get Automation Status",
+        "operationId": "get_automation_status_api_v1_automation_status_get",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/metrics": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Get Automation Metrics",
+        "operationId": "get_automation_metrics_api_v1_automation_metrics_get",
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/health": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Get Automation Health",
+        "operationId": "get_automation_health_api_v1_automation_health_get",
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/leads": {
+      "get": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "List Leads",
+        "description": "List leads from the global repository, optionally filtered.",
+        "operationId": "list_leads_api_v1_leads_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Domain"
+            }
+          },
+          {
+            "name": "hunt_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/leads/{lead_id}": {
+      "get": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Get Lead",
+        "description": "Return a single lead with its sighting history.",
+        "operationId": "get_lead_api_v1_leads__lead_id__get",
+        "parameters": [
+          {
+            "name": "lead_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lead Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/leads": {
+      "get": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "List Hunt Leads",
+        "description": "Return the canonical leads linked to a hunt.",
+        "operationId": "list_hunt_leads_api_v1_hunts__hunt_id__leads_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hunts/{hunt_id}/stream": {
+      "get": {
+        "summary": "Stream Hunt",
+        "description": "Stream real-time hunt progress via SSE.\n\nEvent types:\n- stage_change: Pipeline stage changed (insight, keyword_gen, search, etc.)\n- round_change: New hunting round started\n- progress: Lead count updated\n- lead_progress: Per-URL extraction progress (scraping, lead_found, scrape_done, etc.)\n- completed: Hunt finished successfully\n- failed: Hunt failed with error\n- heartbeat: Keep-alive ping",
+        "operationId": "stream_hunt_api_v1_hunts__hunt_id__stream_get",
+        "parameters": [
+          {
+            "name": "hunt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hunt Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/jobs/{job_id}/stream": {
+      "get": {
+        "summary": "Stream Automation Job",
+        "operationId": "stream_automation_job_api_v1_automation_jobs__job_id__stream_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Settings Api",
+        "description": "Return current settings with sensitive values partially masked.",
+        "operationId": "get_settings_api_api_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Save Settings",
+        "description": "Save settings to the user's .env file. Empty strings are skipped.",
+        "operationId": "save_settings_api_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/email/test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Email Settings",
+        "description": "Test SMTP connectivity using the current saved settings.",
+        "operationId": "test_email_settings_api_settings_email_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmtpTestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/email/imap-test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Email Imap Settings",
+        "description": "Test IMAP connectivity using the current saved settings.",
+        "operationId": "test_email_imap_settings_api_settings_email_imap_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImapTestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/automation/feishu-test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Automation Feishu Webhook",
+        "description": "Send a test message to the configured Feishu webhook.",
+        "operationId": "test_automation_feishu_webhook_api_settings_automation_feishu_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeishuTestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AutomationJobContinueRequest": {
+        "properties": {
+          "target_lead_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Target Lead Count",
+            "default": 200
+          },
+          "max_rounds": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Rounds",
+            "default": 10
+          },
+          "min_new_leads_threshold": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Min New Leads Threshold",
+            "default": 5
+          },
+          "enable_email_craft": {
+            "type": "boolean",
+            "title": "Enable Email Craft",
+            "default": false
+          },
+          "email_template_examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Email Template Examples"
+          },
+          "email_template_notes": {
+            "type": "string",
+            "title": "Email Template Notes",
+            "default": ""
+          },
+          "dedup_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "skip",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Mode"
+          }
+        },
+        "type": "object",
+        "title": "AutomationJobContinueRequest"
+      },
+      "AutomationJobRequest": {
+        "properties": {
+          "website_url": {
+            "type": "string",
+            "title": "Website Url",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "product_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Product Keywords"
+          },
+          "target_customer_profile": {
+            "type": "string",
+            "title": "Target Customer Profile",
+            "default": ""
+          },
+          "target_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Regions"
+          },
+          "uploaded_file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Uploaded File Ids"
+          },
+          "target_lead_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Target Lead Count",
+            "default": 200
+          },
+          "max_rounds": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Rounds",
+            "default": 10
+          },
+          "min_new_leads_threshold": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Min New Leads Threshold",
+            "default": 5
+          },
+          "enable_email_craft": {
+            "type": "boolean",
+            "title": "Enable Email Craft",
+            "default": false
+          },
+          "email_template_examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Email Template Examples"
+          },
+          "email_template_notes": {
+            "type": "string",
+            "title": "Email Template Notes",
+            "default": ""
+          },
+          "dedup_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "skip",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Mode"
+          }
+        },
+        "type": "object",
+        "title": "AutomationJobRequest"
+      },
+      "Body_upload_files_api_v1_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_files_api_v1_upload_post"
+      },
+      "FeishuTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "webhook_url": {
+            "type": "string",
+            "title": "Webhook Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "webhook_url"
+        ],
+        "title": "FeishuTestResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HuntRequest": {
+        "properties": {
+          "website_url": {
+            "type": "string",
+            "title": "Website Url",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Free-form description, e.g. '我想找东南亚的旅行社'",
+            "default": ""
+          },
+          "product_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Product Keywords"
+          },
+          "target_customer_profile": {
+            "type": "string",
+            "title": "Target Customer Profile",
+            "description": "Target customer type, e.g. '批发商和代理商', 'distributors and wholesalers'",
+            "default": ""
+          },
+          "target_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Regions"
+          },
+          "uploaded_file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Uploaded File Ids",
+            "description": "File paths returned by /upload endpoint"
+          },
+          "target_lead_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Target Lead Count",
+            "default": 200
+          },
+          "max_rounds": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Rounds",
+            "default": 10
+          },
+          "min_new_leads_threshold": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Min New Leads Threshold",
+            "default": 5
+          },
+          "enable_email_craft": {
+            "type": "boolean",
+            "title": "Enable Email Craft",
+            "description": "Whether to generate emails after hunting",
+            "default": false
+          },
+          "email_template_examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Email Template Examples",
+            "description": "Optional historical outreach emails or template samples from the user"
+          },
+          "email_template_notes": {
+            "type": "string",
+            "title": "Email Template Notes",
+            "description": "Optional notes about preferred style, offer, or constraints",
+            "default": ""
+          },
+          "template_seed": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Seed"
+          },
+          "dedup_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "skip",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Mode",
+            "description": "Global lead dedup behavior; None uses the configured default"
+          }
+        },
+        "type": "object",
+        "title": "HuntRequest"
+      },
+      "HuntResponse": {
+        "properties": {
+          "hunt_id": {
+            "type": "string",
+            "title": "Hunt Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hunt_id",
+          "status"
+        ],
+        "title": "HuntResponse"
+      },
+      "HuntResult": {
+        "properties": {
+          "hunt_id": {
+            "type": "string",
+            "title": "Hunt Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "insight": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insight"
+          },
+          "leads": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Leads"
+          },
+          "email_sequences": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Email Sequences"
+          },
+          "used_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Used Keywords"
+          },
+          "hunt_round": {
+            "type": "integer",
+            "title": "Hunt Round",
+            "default": 0
+          },
+          "round_feedback": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round Feedback"
+          },
+          "keyword_search_stats": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Keyword Search Stats"
+          },
+          "search_result_count": {
+            "type": "integer",
+            "title": "Search Result Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "hunt_id",
+          "status"
+        ],
+        "title": "HuntResult"
+      },
+      "HuntStatus": {
+        "properties": {
+          "hunt_id": {
+            "type": "string",
+            "title": "Hunt Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "current_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage"
+          },
+          "hunt_round": {
+            "type": "integer",
+            "title": "Hunt Round",
+            "default": 0
+          },
+          "leads_count": {
+            "type": "integer",
+            "title": "Leads Count",
+            "default": 0
+          },
+          "email_sequences_count": {
+            "type": "integer",
+            "title": "Email Sequences Count",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hunt_id",
+          "status"
+        ],
+        "title": "HuntStatus"
+      },
+      "ImapTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "host",
+          "username"
+        ],
+        "title": "ImapTestResponse"
+      },
+      "ResumeRequest": {
+        "properties": {
+          "target_lead_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Target Lead Count",
+            "default": 200
+          },
+          "max_rounds": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Rounds",
+            "default": 10
+          },
+          "min_new_leads_threshold": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Min New Leads Threshold",
+            "default": 5
+          },
+          "enable_email_craft": {
+            "type": "boolean",
+            "title": "Enable Email Craft",
+            "default": false
+          },
+          "email_template_examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Email Template Examples"
+          },
+          "email_template_notes": {
+            "type": "string",
+            "title": "Email Template Notes",
+            "default": ""
+          },
+          "template_seed": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Seed"
+          },
+          "dedup_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "skip",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Mode"
+          }
+        },
+        "type": "object",
+        "title": "ResumeRequest"
+      },
+      "SettingsPayload": {
+        "properties": {
+          "llm_model": {
+            "type": "string",
+            "title": "Llm Model",
+            "default": ""
+          },
+          "reasoning_model": {
+            "type": "string",
+            "title": "Reasoning Model",
+            "default": ""
+          },
+          "email_llm_model": {
+            "type": "string",
+            "title": "Email Llm Model",
+            "default": ""
+          },
+          "email_reasoning_model": {
+            "type": "string",
+            "title": "Email Reasoning Model",
+            "default": ""
+          },
+          "openai_api_key": {
+            "type": "string",
+            "title": "Openai Api Key",
+            "default": ""
+          },
+          "anthropic_api_key": {
+            "type": "string",
+            "title": "Anthropic Api Key",
+            "default": ""
+          },
+          "openrouter_api_key": {
+            "type": "string",
+            "title": "Openrouter Api Key",
+            "default": ""
+          },
+          "groq_api_key": {
+            "type": "string",
+            "title": "Groq Api Key",
+            "default": ""
+          },
+          "zai_api_key": {
+            "type": "string",
+            "title": "Zai Api Key",
+            "default": ""
+          },
+          "moonshot_api_key": {
+            "type": "string",
+            "title": "Moonshot Api Key",
+            "default": ""
+          },
+          "minimax_api_key": {
+            "type": "string",
+            "title": "Minimax Api Key",
+            "default": ""
+          },
+          "email_openai_api_key": {
+            "type": "string",
+            "title": "Email Openai Api Key",
+            "default": ""
+          },
+          "email_anthropic_api_key": {
+            "type": "string",
+            "title": "Email Anthropic Api Key",
+            "default": ""
+          },
+          "email_openrouter_api_key": {
+            "type": "string",
+            "title": "Email Openrouter Api Key",
+            "default": ""
+          },
+          "email_groq_api_key": {
+            "type": "string",
+            "title": "Email Groq Api Key",
+            "default": ""
+          },
+          "email_zai_api_key": {
+            "type": "string",
+            "title": "Email Zai Api Key",
+            "default": ""
+          },
+          "email_moonshot_api_key": {
+            "type": "string",
+            "title": "Email Moonshot Api Key",
+            "default": ""
+          },
+          "email_minimax_api_key": {
+            "type": "string",
+            "title": "Email Minimax Api Key",
+            "default": ""
+          },
+          "serper_api_key": {
+            "type": "string",
+            "title": "Serper Api Key",
+            "default": ""
+          },
+          "tavily_api_key": {
+            "type": "string",
+            "title": "Tavily Api Key",
+            "default": ""
+          },
+          "jina_api_key": {
+            "type": "string",
+            "title": "Jina Api Key",
+            "default": ""
+          },
+          "email_provider_type": {
+            "type": "string",
+            "title": "Email Provider Type",
+            "default": ""
+          },
+          "email_from_name": {
+            "type": "string",
+            "title": "Email From Name",
+            "default": ""
+          },
+          "email_from_address": {
+            "type": "string",
+            "title": "Email From Address",
+            "default": ""
+          },
+          "email_reply_to": {
+            "type": "string",
+            "title": "Email Reply To",
+            "default": ""
+          },
+          "email_smtp_host": {
+            "type": "string",
+            "title": "Email Smtp Host",
+            "default": ""
+          },
+          "email_smtp_port": {
+            "type": "string",
+            "title": "Email Smtp Port",
+            "default": ""
+          },
+          "email_smtp_username": {
+            "type": "string",
+            "title": "Email Smtp Username",
+            "default": ""
+          },
+          "email_smtp_password": {
+            "type": "string",
+            "title": "Email Smtp Password",
+            "default": ""
+          },
+          "email_smtp_last_test_at": {
+            "type": "string",
+            "title": "Email Smtp Last Test At",
+            "default": ""
+          },
+          "email_imap_host": {
+            "type": "string",
+            "title": "Email Imap Host",
+            "default": ""
+          },
+          "email_imap_port": {
+            "type": "string",
+            "title": "Email Imap Port",
+            "default": ""
+          },
+          "email_imap_username": {
+            "type": "string",
+            "title": "Email Imap Username",
+            "default": ""
+          },
+          "email_imap_password": {
+            "type": "string",
+            "title": "Email Imap Password",
+            "default": ""
+          },
+          "email_imap_last_test_at": {
+            "type": "string",
+            "title": "Email Imap Last Test At",
+            "default": ""
+          },
+          "email_use_tls": {
+            "type": "string",
+            "title": "Email Use Tls",
+            "default": ""
+          },
+          "email_sequence_enabled": {
+            "type": "string",
+            "title": "Email Sequence Enabled",
+            "default": ""
+          },
+          "email_auto_send_enabled": {
+            "type": "string",
+            "title": "Email Auto Send Enabled",
+            "default": ""
+          },
+          "email_step1_delay_days": {
+            "type": "string",
+            "title": "Email Step1 Delay Days",
+            "default": ""
+          },
+          "email_step2_delay_days": {
+            "type": "string",
+            "title": "Email Step2 Delay Days",
+            "default": ""
+          },
+          "email_step3_delay_days": {
+            "type": "string",
+            "title": "Email Step3 Delay Days",
+            "default": ""
+          },
+          "email_business_hours_start": {
+            "type": "string",
+            "title": "Email Business Hours Start",
+            "default": ""
+          },
+          "email_business_hours_end": {
+            "type": "string",
+            "title": "Email Business Hours End",
+            "default": ""
+          },
+          "email_weekdays_only": {
+            "type": "string",
+            "title": "Email Weekdays Only",
+            "default": ""
+          },
+          "email_timezone": {
+            "type": "string",
+            "title": "Email Timezone",
+            "default": ""
+          },
+          "email_daily_send_limit": {
+            "type": "string",
+            "title": "Email Daily Send Limit",
+            "default": ""
+          },
+          "email_hourly_send_limit": {
+            "type": "string",
+            "title": "Email Hourly Send Limit",
+            "default": ""
+          },
+          "email_language_mode": {
+            "type": "string",
+            "title": "Email Language Mode",
+            "default": ""
+          },
+          "email_default_language": {
+            "type": "string",
+            "title": "Email Default Language",
+            "default": ""
+          },
+          "email_fallback_language": {
+            "type": "string",
+            "title": "Email Fallback Language",
+            "default": ""
+          },
+          "email_tone": {
+            "type": "string",
+            "title": "Email Tone",
+            "default": ""
+          },
+          "email_signature_block": {
+            "type": "string",
+            "title": "Email Signature Block",
+            "default": ""
+          },
+          "email_signature_name": {
+            "type": "string",
+            "title": "Email Signature Name",
+            "default": ""
+          },
+          "email_signature_title": {
+            "type": "string",
+            "title": "Email Signature Title",
+            "default": ""
+          },
+          "email_signature_phone": {
+            "type": "string",
+            "title": "Email Signature Phone",
+            "default": ""
+          },
+          "email_llm_requests_per_minute": {
+            "type": "string",
+            "title": "Email Llm Requests Per Minute",
+            "default": ""
+          },
+          "email_reasoning_requests_per_minute": {
+            "type": "string",
+            "title": "Email Reasoning Requests Per Minute",
+            "default": ""
+          },
+          "email_min_fit_score_to_send": {
+            "type": "string",
+            "title": "Email Min Fit Score To Send",
+            "default": ""
+          },
+          "email_min_contactability_score_to_send": {
+            "type": "string",
+            "title": "Email Min Contactability Score To Send",
+            "default": ""
+          },
+          "email_allow_inferred_target": {
+            "type": "string",
+            "title": "Email Allow Inferred Target",
+            "default": ""
+          },
+          "email_allow_generic_company_email": {
+            "type": "string",
+            "title": "Email Allow Generic Company Email",
+            "default": ""
+          },
+          "email_require_approval_before_send": {
+            "type": "string",
+            "title": "Email Require Approval Before Send",
+            "default": ""
+          },
+          "email_reply_detection_enabled": {
+            "type": "string",
+            "title": "Email Reply Detection Enabled",
+            "default": ""
+          },
+          "email_reply_check_interval_seconds": {
+            "type": "string",
+            "title": "Email Reply Check Interval Seconds",
+            "default": ""
+          },
+          "email_template_max_send_count": {
+            "type": "string",
+            "title": "Email Template Max Send Count",
+            "default": ""
+          },
+          "email_template_underperforming_min_assigned": {
+            "type": "string",
+            "title": "Email Template Underperforming Min Assigned",
+            "default": ""
+          },
+          "email_template_underperforming_min_reply_rate": {
+            "type": "string",
+            "title": "Email Template Underperforming Min Reply Rate",
+            "default": ""
+          },
+          "automation_feishu_webhook_url": {
+            "type": "string",
+            "title": "Automation Feishu Webhook Url",
+            "default": ""
+          },
+          "automation_summary_enabled": {
+            "type": "string",
+            "title": "Automation Summary Enabled",
+            "default": ""
+          },
+          "automation_summary_interval_seconds": {
+            "type": "string",
+            "title": "Automation Summary Interval Seconds",
+            "default": ""
+          },
+          "automation_alerts_enabled": {
+            "type": "string",
+            "title": "Automation Alerts Enabled",
+            "default": ""
+          },
+          "automation_alert_interval_seconds": {
+            "type": "string",
+            "title": "Automation Alert Interval Seconds",
+            "default": ""
+          },
+          "automation_alert_backlog_threshold": {
+            "type": "string",
+            "title": "Automation Alert Backlog Threshold",
+            "default": ""
+          },
+          "automation_alert_failed_messages_threshold": {
+            "type": "string",
+            "title": "Automation Alert Failed Messages Threshold",
+            "default": ""
+          },
+          "search_concurrency": {
+            "type": "string",
+            "title": "Search Concurrency",
+            "default": ""
+          },
+          "scrape_concurrency": {
+            "type": "string",
+            "title": "Scrape Concurrency",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "SettingsPayload"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Settings"
+          },
+          "is_configured": {
+            "type": "boolean",
+            "title": "Is Configured"
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings",
+          "is_configured"
+        ],
+        "title": "SettingsResponse"
+      },
+      "SmtpTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "host",
+          "username"
+        ],
+        "title": "SmtpTestResponse"
+      },
+      "TemplateSeedRequest": {
+        "properties": {
+          "website_url": {
+            "type": "string",
+            "title": "Website Url",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "product_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Product Keywords"
+          },
+          "target_customer_profile": {
+            "type": "string",
+            "title": "Target Customer Profile",
+            "default": ""
+          },
+          "target_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Regions"
+          },
+          "uploaded_file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Uploaded File Ids"
+          },
+          "email_template_examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Email Template Examples"
+          },
+          "email_template_notes": {
+            "type": "string",
+            "title": "Email Template Notes",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "TemplateSeedRequest"
+      },
+      "TemplateSeedResponse": {
+        "properties": {
+          "template_seed": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Template Seed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "template_seed"
+        ],
+        "title": "TemplateSeedResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
