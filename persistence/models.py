@@ -260,3 +260,73 @@ class EmailReplyEvent(Base):
     created_at = Column(String, nullable=False)
 
     __table_args__ = (Index("idx_reply_sequence_id", "sequence_id"),)
+
+
+# ── Cross-domain contracts (hunter → marketing handoff) ──────────────────────
+
+
+class EmailDraft(Base):
+    """Generated outreach sequence handed from the hunter pipeline to the
+    marketing service. Written by the hunter domain; approval and campaign
+    creation are owned by the marketing service."""
+
+    __tablename__ = "email_drafts"
+
+    id = Column(String, primary_key=True)
+    hunt_id = Column(String, nullable=False)
+    sequence_index = Column(Integer, nullable=False, server_default=text("0"))
+    lead_id = Column(String, server_default=text("''"))
+    lead_key = Column(String, server_default=text("''"))
+    company_name = Column(String, server_default=text("''"))
+    website = Column(Text, server_default=text("''"))
+    locale = Column(String, nullable=False, server_default=text("'en'"))
+    target = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    targets = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    emails = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    language_choice = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    strategy_brief = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    validation_summary = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    review_summary = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    review_status = Column(String, server_default=text("''"))
+    generation_mode = Column(String, nullable=False, server_default=text("'personalized'"))
+    template_id = Column(String, server_default=text("''"))
+    template_group = Column(String, server_default=text("''"))
+    template_usage_index = Column(Integer, nullable=False, server_default=text("0"))
+    template_max_send_count = Column(Integer, nullable=False, server_default=text("0"))
+    template_seed_source = Column(String, server_default=text("''"))
+    status = Column(String, nullable=False, server_default=text("'draft'"))
+    manual_review = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    error = Column(Text, server_default=text("''"))
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("hunt_id", "sequence_index", name="uq_email_draft_hunt_index"),
+        Index("idx_email_drafts_status", "status", "created_at"),
+        Index("idx_email_drafts_lead_key", "lead_key"),
+    )
+
+
+class CampaignJob(Base):
+    """DB-mediated handoff: the hunter domain requests a campaign for a
+    finished hunt; the marketing service claims and executes it."""
+
+    __tablename__ = "campaign_jobs"
+
+    id = Column(String, primary_key=True)
+    hunt_id = Column(String, nullable=False)
+    status = Column(String, nullable=False, server_default=text("'queued'"))
+    payload_json = Column(Text, nullable=False)
+    campaign_id = Column(String, server_default=text("''"))
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    claimed_at = Column(String, server_default=text("''"))
+    finished_at = Column(String, server_default=text("''"))
+    claimed_by = Column(String, server_default=text("''"))
+    attempt_count = Column(Integer, nullable=False, server_default=text("0"))
+    last_error = Column(Text, server_default=text("''"))
+
+    __table_args__ = (
+        Index("idx_campaign_jobs_status", "status", "created_at"),
+        Index("idx_campaign_jobs_hunt", "hunt_id"),
+    )
