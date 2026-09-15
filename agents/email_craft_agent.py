@@ -782,8 +782,11 @@ def _review_issue_requires_manual_review(issue: str) -> bool:
 
 
 def _review_allows_send(review_summary: dict[str, Any], settings: Any) -> bool:
-    if not bool(getattr(settings, "email_require_approval_before_send", True)):
-        return True
+    # When manual approval is required, only an explicit human decision
+    # (sequence decision endpoint) may mark a sequence send-eligible —
+    # the model's own validation pass must never self-approve sending.
+    if bool(getattr(settings, "email_require_approval_before_send", True)):
+        return False
     return str(review_summary.get("status", "") or "") == "approved"
 
 

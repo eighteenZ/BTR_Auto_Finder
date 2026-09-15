@@ -84,15 +84,16 @@ def _default_account(store: EmailStore) -> dict[str, Any]:
 
 def _sequence_is_campaign_ready(sequence: dict[str, Any]) -> bool:
     manual_review = sequence.get("manual_review")
-    if isinstance(manual_review, dict):
-        decision = str(manual_review.get("decision", "") or "")
-        if decision == "approved":
-            return True
-        if decision == "rejected":
-            return False
+    decision = str(manual_review.get("decision", "") or "") if isinstance(manual_review, dict) else ""
+    if decision == "approved":
+        return True
+    if decision == "rejected":
+        return False
     if not bool(getattr(get_settings(), "email_require_approval_before_send", True)):
         return True
-    return bool(sequence.get("auto_send_eligible"))
+    # Approval mode: only an explicit human decision makes a sequence ready;
+    # the generation-time auto_send_eligible flag must never self-approve.
+    return False
 
 
 def _campaign_summary(store: EmailStore, campaign_id: str) -> dict[str, Any]:
@@ -215,7 +216,11 @@ async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
         if isinstance(primary_target, dict):
             raw_targets.append(primary_target)
         raw_targets.extend(seq.get("targets") or [])
-        raw_targets.extend(expand_email_targets(lead) or [])
+        if not raw_targets:
+            # Fallback only when the sequence carries no explicit target at all.
+            # Never blanket-expand to every email on the lead: one company must
+            # not receive parallel sequences on all its scraped addresses.
+            raw_targets.extend(expand_email_targets(lead) or [])
         seen_target_emails: set[str] = set()
         targets = []
         for target in raw_targets:
