@@ -162,3 +162,105 @@ class TestCampaignJobConsumer:
     @pytest.mark.asyncio
     async def test_no_jobs_returns_false(self):
         assert await run_campaign_job_once() is False
+
+
+class TestCampaignJobApprovalDeferral:
+    def _fake_settings(self):
+        class FakeSettings:
+            email_db_path = ""
+            email_provider_type = "smtp"
+            email_from_name = "B2Binsights"
+            email_from_address = "sales@example.com"
+            email_reply_to = "sales@example.com"
+            email_smtp_host = "smtp.example.com"
+            email_smtp_port = 587
+            email_smtp_username = "sales@example.com"
+            email_smtp_password = "secret"
+            email_smtp_last_test_at = "2026-04-04T10:00:00Z"
+            email_imap_host = ""
+            email_imap_port = 993
+            email_imap_username = ""
+            email_imap_password = ""
+            email_use_tls = True
+            email_daily_send_limit = 50
+            email_hourly_send_limit = 10
+            email_language_mode = "auto_by_region"
+            email_default_language = "en"
+            email_fallback_language = "en"
+            email_tone = "professional"
+            email_step1_delay_days = 0
+            email_step2_delay_days = 3
+            email_step3_delay_days = 3
+            email_min_fit_score_to_send = 0.6
+            email_min_contactability_score_to_send = 0.45
+        return FakeSettings()
+
+    @pytest.mark.asyncio
+    async def test_undecided_drafts_defer_the_job(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        _seed_draft(hunt_id="hunt_d1", manual_review={})  # undecided
+
+        queue = CampaignJobQueue()
+        job = queue.enqueue("hunt_d1", {"name": "deferred"})
+
+        worked = await run_campaign_job_once()
+        assert worked is True
+
+        deferred = queue.get_job(job["id"])
+        assert deferred["status"] == "queued"
+        assert deferred["available_at"] != ""
+        assert deferred["attempt_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_all_rejected_closes_job_without_campaign(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        draft_id = _seed_draft(hunt_id="hunt_d2", manual_review={})
+        EmailDraftStore().set_decision(draft_id, decision="rejected")
+
+        queue = CampaignJobQueue()
+        job = queue.enqueue("hunt_d2", {"name": "rejected-all"})
+
+        await run_campaign_job_once()
+
+        closed = queue.get_job(job["id"])
+        assert closed["status"] == "completed"
+        assert closed["campaign_id"] == ""
+
+    @pytest.mark.asyncio
+    async def test_approval_then_run_builds_and_starts_campaign(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        _seed_draft(hunt_id="hunt_d3", manual_review={})  # undecided
+
+        queue = CampaignJobQueue()
+        job = queue.enqueue("hunt_d3", {"name": "after approval", "auto_start": True})
+        await run_campaign_job_once()  # defers
+        assert queue.get_job(job["id"])["status"] == "queued"
+
+        drafts = EmailDraftStore().list_drafts_for_hunt("hunt_d3")
+        EmailDraftStore().set_decision(drafts[0]["id"], decision="approved")
+
+        # simulate the delayed availability having passed
+        from persistence.db import execute as _execute, get_session as _get_session
+        with _get_session() as session:
+            _execute(session, "UPDATE campaign_jobs SET available_at = '' WHERE id = ?", (job["id"],))
+
+        await run_campaign_job_once()
+
+        done = queue.get_job(job["id"])
+        assert done["status"] == "completed"
+        assert done["campaign_id"]
+
+        from emailing.store import EmailStore
+
+        campaign = EmailStore().get_campaign(done["campaign_id"])
+        assert campaign["status"] == "active"
+
+
+class TestReviewPage:
+    def test_review_page_served(self):
+        app = create_marketing_app()
+        client = TestClient(app)
+        res = client.get("/review")
+        assert res.status_code == 200
+        assert "邮件草稿审批" in res.text
+        assert "email-drafts" in res.text

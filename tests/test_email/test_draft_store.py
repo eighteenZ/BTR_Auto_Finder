@@ -155,3 +155,35 @@ class TestCampaignJobQueue:
         queue.enqueue(str(uuid4()), {"name": "other"})
 
         assert len(queue.list_jobs(hunt_id=hunt_id)) == 2
+
+
+class TestCampaignJobDeferral:
+    def test_requeue_delays_claim_until_available(self):
+        from datetime import datetime, timedelta, timezone
+
+        queue = CampaignJobQueue()
+        job = queue.enqueue(str(uuid4()), {"name": "defer"})
+
+        claimed = queue.claim_next("worker-1")
+        assert claimed is not None and claimed["id"] == job["id"]
+        # attempt_count incremented by claim
+        assert queue.get_job(job["id"])["attempt_count"] == 1
+
+        queue.requeue(job["id"], delay_seconds=300)
+        requeued = queue.get_job(job["id"])
+        assert requeued["status"] == "queued"
+        assert requeued["claimed_by"] == ""
+        assert requeued["available_at"] > datetime.now(timezone.utc).isoformat()
+        # deferral rolls the attempt back
+        assert requeued["attempt_count"] == 0
+
+        assert queue.claim_next("worker-2") is None  # still delayed
+
+    def test_requeued_job_claimable_when_available_passes(self):
+        queue = CampaignJobQueue()
+        job = queue.enqueue(str(uuid4()), {"name": "soon"})
+        queue.claim_next("w")
+        queue.requeue(job["id"], delay_seconds=0)  # available immediately
+
+        claimed = queue.claim_next("w2")
+        assert claimed is not None and claimed["id"] == job["id"]

@@ -320,6 +320,7 @@ class CampaignJob(Base):
     campaign_id = Column(String, server_default=text("''"))
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
+    available_at = Column(String, nullable=False, server_default=text("''"))
     claimed_at = Column(String, server_default=text("''"))
     finished_at = Column(String, server_default=text("''"))
     claimed_by = Column(String, server_default=text("''"))

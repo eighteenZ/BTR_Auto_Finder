@@ -9,7 +9,7 @@ into and the marketing service claims from. No hunt-domain imports here.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -245,10 +245,12 @@ class CampaignJobQueue:
                 """
                 SELECT * FROM campaign_jobs
                 WHERE status = 'queued'
+                  AND (available_at = '' OR available_at <= ?)
                 ORDER BY created_at ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
                 """,
+                (now,),
             )
             if not row:
                 return None
@@ -259,6 +261,23 @@ class CampaignJobQueue:
                 (worker_id, now, now, row["id"]),
             )
         return self.get_job(row["id"])
+
+    def requeue(self, job_id: str, *, delay_seconds: int) -> None:
+        """Release a claimed job back to the queue with a delayed availability.
+
+        Used when a campaign must wait for draft approval: attempt_count is
+        rolled back so deferral cycles don't inflate real attempts.
+        """
+        now = now_iso()
+        available = (datetime.now(timezone.utc) + timedelta(seconds=max(0, delay_seconds))).isoformat()
+        with get_session() as session:
+            execute(
+                session,
+                "UPDATE campaign_jobs SET status = 'queued', claimed_by = '', claimed_at = '', "
+                "available_at = ?, attempt_count = CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END, "
+                "updated_at = ? WHERE id = ?",
+                (available, now, job_id),
+            )
 
     def mark_completed(self, job_id: str, *, campaign_id: str) -> None:
         now = now_iso()
