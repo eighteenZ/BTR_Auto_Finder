@@ -42,5 +42,29 @@ curl :8000/api/v1/health && curl :8100/api/v1/health
 ```
 
 ⚠️ 拆分模式与合并模式二选一部署；EMAIL_AUTO_SEND_ENABLED 只能由一个进程承载，否则双发。
-⚠️ 升级：重新拉取 release 分支后，pip install --force-reinstall 新 wheel 并重启两个服务。
+
+## 5. 升级
+
+release 分支现在是线性累积的，升级就是普通快进拉取。建议先固定拉取策略，避免误产生 merge：
+```bash
+cd /opt/ai-hunter && git config pull.ff only
+```
+
+**首次过渡（仅需一次）**：早期版本的 release 提交是各自独立重建的，与你本地已有的提交没有共同祖先，
+直接 pull 会提示 divergent branches。执行一次：
+```bash
+git fetch origin release && git reset --hard origin/release
+```
+> `.env` 与 `.venv` 未被 git 跟踪（分支自带 .gitignore），`reset --hard` 不会删除它们。
+
+**之后每次升级**：
+```bash
+cd /opt/ai-hunter
+git pull                                   # 快进拉取新产物
+.venv/bin/pip install --force-reinstall -r requirements.lock.txt ai_hunter-*.whl
+# 若 schema.sql 有新表（升级说明会指出）: psql "<psql url>" -f schema.sql
+systemctl restart ai-hunter-api ai-marketing-api
+curl -s :8000/api/v1/health && curl -s :8100/api/v1/health
+```
+
 完整 API 说明见 docs/API.md。
