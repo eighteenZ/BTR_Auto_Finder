@@ -1,12 +1,12 @@
 {
-  "website_url": "https://www.gdushun.com/",
-  "description": "Find electrical distributors, importers and wholesalers who may buy micro switches, rotary switches and anti-dumping switches.",
+  "website_url": "https://btrlgts.com/",
+  "description": "Find US and European importers, e-commerce sellers, and brands that source products from China and need door-to-door international logistics: sea/air freight, customs clearance, and last-mile delivery.",
   "product_keywords": [
-    "micro switch",
-    "rotary switch",
-    "anti-dumping switch"
+    "wholesale importer",
+    "import export company",
+    "online retailer sourcing from China"
   ],
-  "target_customer_profile": "Electrical distributors, importers and wholesalers",
+  "target_customer_profile": "US and European importers, e-commerce sellers, and brands sourcing goods from China",
   "target_regions": [
     "United States"
   ],
@@ -15,6 +15,6 @@
   "min_new_leads_threshold": 1,
   "enable_email_craft": true,
   "email_template_examples": [],
-  "email_template_notes": "Keep the tone professional, concise, and suitable for foreign trade cold outreach.",
+  "email_template_notes": "We are Better International Logistics (btrlgts.com): global door-to-door logistics from China — sea freight, air freight, customs clearance, and last-mile delivery. Position as a reliable China-based logistics partner for importers and e-commerce sellers. Keep the tone professional, concise, and suitable for foreign trade cold outreach.",
   "dedup_mode": "reuse"
 }
