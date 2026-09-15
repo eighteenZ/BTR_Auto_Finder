@@ -45,10 +45,7 @@ from automation.notifier import (
 )
 from automation.runtime import update_worker_state
 from config.settings import get_settings
-from emailing.readiness import ensure_imap_tested, ensure_smtp_tested
-from emailing.reply_detector import run_reply_detection_once
-from emailing.scheduler import run_scheduler_once
-from emailing.store import EmailStore
+from api.marketing_app import campaign_jobs_loop, email_reply_loop, email_scheduler_loop
 from scripts.headless_worker import JobCancelledError, _campaign_name
 
 # Configure logging for the entire application
@@ -477,50 +474,6 @@ async def _automation_consumer_loop() -> None:
         await asyncio.sleep(max(1, int(get_settings().automation_consumer_poll_seconds)))
 
 
-async def _email_scheduler_loop() -> None:
-    """Poll pending email jobs and dispatch due messages."""
-    while True:
-        try:
-            settings = get_settings()
-            if not bool(settings.email_auto_send_enabled):
-                await asyncio.sleep(60)
-                continue
-            ensure_smtp_tested(settings)
-            store = EmailStore(settings.email_db_path)
-            store.init_db()
-            result = await run_scheduler_once(store)
-            if result["sent"] or result["failed"]:
-                logger.info("[EmailScheduler] sent=%s failed=%s skipped=%s", result["sent"], result["failed"], result["skipped"])
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("[EmailScheduler] polling iteration failed")
-        await asyncio.sleep(60)
-
-
-async def _email_reply_loop() -> None:
-    """Poll inbox for replies and stop follow-up sequences."""
-    while True:
-        try:
-            settings = get_settings()
-            if not bool(settings.email_reply_detection_enabled):
-                await asyncio.sleep(max(30, int(settings.email_reply_check_interval_seconds)))
-                continue
-            ensure_imap_tested(settings)
-            store = EmailStore(settings.email_db_path)
-            store.init_db()
-            account = store.get_account("default")
-            if account:
-                result = await run_reply_detection_once(store, account)
-                if result["matched"]:
-                    logger.info("[EmailReply] checked=%s matched=%s skipped=%s", result["checked"], result["matched"], result["skipped"])
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("[EmailReply] polling iteration failed")
-        await asyncio.sleep(max(30, int(settings.email_reply_check_interval_seconds)))
-
-
 async def _automation_notify_loop() -> None:
     last_summary_at = 0.0
     last_alert_at = 0.0
@@ -664,10 +617,12 @@ async def lifespan(app: FastAPI):
     from observability.setup import setup_observability
     setup_observability()
 
-    app.state.email_scheduler_task = asyncio.create_task(_email_scheduler_loop())
+    app.state.email_scheduler_task = asyncio.create_task(email_scheduler_loop())
     logger.info("[EmailScheduler] background loop started")
-    app.state.email_reply_task = asyncio.create_task(_email_reply_loop())
+    app.state.email_reply_task = asyncio.create_task(email_reply_loop())
     logger.info("[EmailReply] background loop started")
+    app.state.campaign_jobs_task = asyncio.create_task(campaign_jobs_loop())
+    logger.info("[CampaignJobs] background loop started")
     app.state.automation_notify_task = asyncio.create_task(_automation_notify_loop())
     logger.info("[AutomationNotify] background loop started")
     app.state.template_seed_task = asyncio.create_task(_template_seed_prewarm_loop())
@@ -691,6 +646,12 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await reply_task
             logger.info("[EmailReply] background loop stopped")
+        campaign_jobs_task = getattr(app.state, "campaign_jobs_task", None)
+        if campaign_jobs_task:
+            campaign_jobs_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await campaign_jobs_task
+            logger.info("[CampaignJobs] background loop stopped")
         template_seed_task = getattr(app.state, "template_seed_task", None)
         if template_seed_task:
             template_seed_task.cancel()

@@ -1,21 +1,29 @@
-"""Email campaign API routes."""
+"""Email marketing API routes — operates purely on the email-domain tables.
+
+Drafts arrive through the ``email_drafts`` contract table (written by the
+hunter service); campaigns/sequences/messages/replies live in the email
+tables. This module deliberately imports nothing from the hunt domain
+except read-only lead identity helpers.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from api.hunt_store import load_hunt, now_iso
 from api.security import require_api_access
 from config.settings import get_settings
+from emailing.draft_store import EmailDraftStore, now_iso
 from emailing.policy import expand_email_targets
 from emailing.readiness import ensure_imap_tested, ensure_smtp_ready, ensure_smtp_tested
 from emailing.reply_detector import run_reply_detection_once
 from emailing.scheduler import run_scheduler_once
+from emailing.smtp_client import send_smtp_email
 from emailing.store import EmailStore
 from persistence.lead_identity import official_domain
 
@@ -51,6 +59,12 @@ def _store() -> EmailStore:
     return store
 
 
+def _draft_store() -> EmailDraftStore:
+    store = EmailDraftStore(get_settings().email_db_path)
+    store.init_db()
+    return store
+
+
 def _default_account(store: EmailStore) -> dict[str, Any]:
     settings = get_settings()
     account_id = "default"
@@ -82,17 +96,15 @@ def _default_account(store: EmailStore) -> dict[str, Any]:
     return store.get_account(account_id) or payload
 
 
-def _sequence_is_campaign_ready(sequence: dict[str, Any]) -> bool:
-    manual_review = sequence.get("manual_review")
+def _draft_is_campaign_ready(draft: dict[str, Any]) -> bool:
+    if str(draft.get("status", "") or "") in {"approved", "rejected"}:
+        return draft["status"] == "approved"
+    manual_review = draft.get("manual_review")
     decision = str(manual_review.get("decision", "") or "") if isinstance(manual_review, dict) else ""
-    if decision == "approved":
-        return True
-    if decision == "rejected":
-        return False
+    if decision in {"approved", "rejected"}:
+        return decision == "approved"
     if not bool(getattr(get_settings(), "email_require_approval_before_send", True)):
         return True
-    # Approval mode: only an explicit human decision makes a sequence ready;
-    # the generation-time auto_send_eligible flag must never self-approve.
     return False
 
 
@@ -116,6 +128,147 @@ def _campaign_summary(store: EmailStore, campaign_id: str) -> dict[str, Any]:
     }
 
 
+# ── Draft review API ─────────────────────────────────────────────────────────
+
+
+class DraftDecisionRequest(BaseModel):
+    decision: Literal["approved", "rejected"]
+    notes: str = ""
+
+
+class DraftDecisionResponse(BaseModel):
+    draft_id: str
+    hunt_id: str
+    sequence_index: int
+    decision: str
+    manual_review: dict[str, Any]
+
+
+class SendDraftRequest(BaseModel):
+    sequence_number: int = Field(default=1, ge=1, le=3)
+
+
+class SendDraftResponse(BaseModel):
+    draft_id: str
+    sequence_number: int
+    sent_to: str
+    subject: str
+    status: str
+
+
+def _draft_public(draft: dict[str, Any]) -> dict[str, Any]:
+    return draft
+
+
+@router.get("/hunts/{hunt_id}/email-drafts", dependencies=[Depends(require_api_access)])
+async def list_hunt_email_drafts(hunt_id: str):
+    return [_draft_public(d) for d in _draft_store().list_drafts_for_hunt(hunt_id)]
+
+
+@router.get("/email-drafts", dependencies=[Depends(require_api_access)])
+async def list_email_drafts(status: str = "", hunt_id: str = "", limit: int = 200):
+    return [_draft_public(d) for d in _draft_store().list_drafts(status=status, hunt_id=hunt_id, limit=limit)]
+
+
+async def _decide_draft(draft_id: str, request: DraftDecisionRequest) -> DraftDecisionResponse:
+    drafts = _draft_store()
+    draft = drafts.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+    updated = drafts.set_decision(draft_id, decision=request.decision, notes=request.notes)
+    review = (updated or {}).get("manual_review") or {}
+    return DraftDecisionResponse(
+        draft_id=draft_id,
+        hunt_id=str(draft.get("hunt_id", "")),
+        sequence_index=int(draft.get("sequence_index", 0) or 0),
+        decision=request.decision,
+        manual_review=review,
+    )
+
+
+@router.post("/email-drafts/{draft_id}/decision", response_model=DraftDecisionResponse, dependencies=[Depends(require_api_access)])
+async def decide_email_draft(draft_id: str, request: DraftDecisionRequest):
+    """Approve or reject a generated outreach draft."""
+    return await _decide_draft(draft_id, request)
+
+
+@router.post(
+    "/hunts/{hunt_id}/email-sequences/{sequence_index}/decision",
+    response_model=DraftDecisionResponse,
+    dependencies=[Depends(require_api_access)],
+    include_in_schema=False,
+)
+async def decide_email_sequence_legacy(hunt_id: str, sequence_index: int, request: DraftDecisionRequest):
+    """Legacy path: map (hunt_id, sequence_index) onto the draft and decide."""
+    draft = _draft_store().get_draft_by_index(hunt_id, sequence_index)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Email draft not found for this hunt/index")
+    return await _decide_draft(str(draft["id"]), request)
+
+
+def _draft_recipient(draft: dict[str, Any]) -> str:
+    target = draft.get("target") or {}
+    if isinstance(target, dict):
+        email = str(target.get("target_email", "") or "").strip()
+        if email:
+            return email
+    for item in draft.get("targets") or []:
+        email = str((item or {}).get("target_email", "") or "").strip()
+        if email:
+            return email
+    return ""
+
+
+@router.post("/email-drafts/{draft_id}/send", response_model=SendDraftResponse, dependencies=[Depends(require_api_access)])
+async def send_email_draft(draft_id: str, request: SendDraftRequest):
+    """Manually send one step of an approved draft via SMTP."""
+    drafts = _draft_store()
+    draft = drafts.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+    if not _draft_is_campaign_ready(draft):
+        raise HTTPException(status_code=409, detail="Email draft must be approved before sending")
+
+    recipient = _draft_recipient(draft)
+    if not recipient:
+        raise HTTPException(status_code=422, detail="No recipient email found on this draft")
+
+    selected = None
+    for item in draft.get("emails") or []:
+        if isinstance(item, dict) and int(item.get("sequence_number", 0) or 0) == request.sequence_number:
+            selected = item
+            break
+    if not selected:
+        raise HTTPException(status_code=404, detail="Requested draft step not found")
+
+    settings = get_settings()
+    try:
+        ensure_smtp_ready(settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        send_result = await asyncio.to_thread(
+            send_smtp_email,
+            settings,
+            to_address=recipient,
+            subject=str(selected.get("subject", "") or ""),
+            body_text=str(selected.get("body_text", "") or ""),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return SendDraftResponse(
+        draft_id=draft_id,
+        sequence_number=request.sequence_number,
+        sent_to=recipient,
+        subject=str(selected.get("subject", "") or ""),
+        status=str(send_result.get("status", "sent")),
+    )
+
+
+# ── Campaign API ──────────────────────────────────────────────────────────────
+
+
 class CreateCampaignRequest(BaseModel):
     name: str = "Outbound Campaign"
 
@@ -128,12 +281,9 @@ class CampaignResponse(BaseModel):
 
 @router.post("/hunts/{hunt_id}/email-campaigns", response_model=CampaignResponse, dependencies=[Depends(require_api_access)])
 async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
-    hunt = load_hunt(hunt_id)
-    if not hunt or not isinstance(hunt.get("result"), dict):
-        raise HTTPException(status_code=404, detail="Hunt result not found")
-    sequences = hunt["result"].get("email_sequences", [])
-    if not isinstance(sequences, list) or not sequences:
-        raise HTTPException(status_code=400, detail="No generated email sequences found for this hunt")
+    drafts = _draft_store().list_drafts_for_hunt(hunt_id)
+    if not drafts:
+        raise HTTPException(status_code=400, detail="No generated email drafts found for this hunt")
 
     settings = get_settings()
     try:
@@ -164,17 +314,18 @@ async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
         "updated_at": created,
     })
     base_time = datetime.now(timezone.utc)
-    for seq in sequences:
-        lead = seq.get("lead") or {}
-        primary_target = seq.get("target") or {}
+    for draft in drafts:
+        lead = {
+            "company_name": str(draft.get("company_name", "") or ""),
+            "website": str(draft.get("website", "") or ""),
+        }
+        primary_target = draft.get("target") or {}
         raw_targets = []
         if isinstance(primary_target, dict):
             raw_targets.append(primary_target)
-        raw_targets.extend(seq.get("targets") or [])
+        raw_targets.extend(draft.get("targets") or [])
         if not raw_targets:
-            # Fallback only when the sequence carries no explicit target at all.
-            # Never blanket-expand to every email on the lead: one company must
-            # not receive parallel sequences on all its scraped addresses.
+            # Fallback only when the draft carries no explicit target at all.
             raw_targets.extend(expand_email_targets(lead) or [])
         seen_target_emails: set[str] = set()
         targets = []
@@ -186,14 +337,10 @@ async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
                 continue
             seen_target_emails.add(target_email)
             targets.append(target)
-        emails = seq.get("emails") or []
-        template_perf = seq.get("template_performance") or {}
-        template_status = str(template_perf.get("status", "") or "")
+        emails = draft.get("emails") or []
         if not targets or not emails:
             continue
-        if not _sequence_is_campaign_ready(seq):
-            continue
-        if template_status in {"underperforming", "exhausted"}:
+        if not _draft_is_campaign_ready(draft):
             continue
         for target in targets:
             target_email = str(target.get("target_email") or "")
@@ -214,12 +361,12 @@ async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
                 "lead_name": str(lead.get("company_name") or ""),
                 "decision_maker_name": str(target.get("target_name") or ""),
                 "decision_maker_title": str(target.get("target_title") or ""),
-                "locale": str(seq.get("locale") or "en_US"),
-                "generation_mode": str(seq.get("generation_mode") or "personalized"),
-                "template_id": str(seq.get("template_id") or ""),
-                "template_group": str(seq.get("template_group") or ""),
-                "template_usage_index": int(seq.get("template_usage_index", 0) or 0),
-                "template_max_send_count": int(seq.get("template_max_send_count", 0) or 0),
+                "locale": str(draft.get("locale") or "en_US"),
+                "generation_mode": str(draft.get("generation_mode") or "personalized"),
+                "template_id": str(draft.get("template_id") or ""),
+                "template_group": str(draft.get("template_group") or ""),
+                "template_usage_index": int(draft.get("template_usage_index", 0) or 0),
+                "template_max_send_count": int(draft.get("template_max_send_count", 0) or 0),
                 "status": "scheduled",
                 "current_step": 0,
                 "stop_reason": "",
@@ -241,7 +388,7 @@ async def create_email_campaign(hunt_id: str, payload: CreateCampaignRequest):
                     "sequence_id": sequence_id,
                     "step_number": step_number,
                     "goal": str(email.get("email_type", "") or ""),
-                    "locale": str(seq.get("locale") or "en_US"),
+                    "locale": str(draft.get("locale") or "en_US"),
                     "subject": str(email.get("subject", "") or ""),
                     "body_text": str(email.get("body_text", "") or ""),
                     "status": "pending",
