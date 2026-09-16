@@ -1,4 +1,9 @@
-from emailing.body_format import apply_sender_placeholders, format_plaintext_email_body
+from emailing.body_format import (
+    apply_sender_placeholders,
+    find_placeholders,
+    format_plaintext_email_body,
+    is_known_placeholder,
+)
 
 
 def test_format_plaintext_email_body_adds_paragraph_breaks():
@@ -140,3 +145,46 @@ class TestApplySenderPlaceholders:
         assert "[Email Address]" not in result
         assert "[Company Address]" not in result
         assert "+1 8607978125 | sales@email.btrlgts.com" in result
+
+
+class TestPlaceholderStripping:
+    def test_unknown_token_removed_with_dangling_preposition(self):
+        body = "Following up on my note of [date] about consolidation.\n\nBest regards,\n[Your Name]"
+
+        result = apply_sender_placeholders(body, sender_name="Wendy", strip_unknown=True)
+
+        assert "[date]" not in result
+        assert "my note about consolidation" in result
+        assert result.rstrip().endswith("Wendy")
+
+    def test_unknown_token_kept_without_strip_flag(self):
+        body = "Following up on my note of [date] about consolidation."
+
+        assert "[date]" in apply_sender_placeholders(body, strip_unknown=False)
+
+    def test_unknown_token_line_dropped_entirely(self):
+        body = "Hello,\n\nBody.\n\n[Date of previous email]"
+
+        result = apply_sender_placeholders(body, strip_unknown=True)
+
+        assert "[" not in result
+        assert result.rstrip().endswith("Body.")
+
+    def test_is_known_placeholder_predicate(self):
+        assert is_known_placeholder("[Your Name]")
+        assert is_known_placeholder("[Phone Number]")
+        assert is_known_placeholder("[phone/email]")
+        assert not is_known_placeholder("[date]")
+        assert not is_known_placeholder("[Product Line]")
+
+    def test_recipient_name_used_in_salutation(self):
+        body = "Dear [Name],\n\nBody.\n\nBest regards,\n[Your Name]"
+
+        with_name = apply_sender_placeholders(body, sender_name="Wendy", recipient_name="Ms. Grayson")
+        without = apply_sender_placeholders(body, sender_name="Wendy")
+
+        assert with_name.startswith("Dear Ms. Grayson,")
+        assert without.startswith("Dear Sir/Madam,")
+
+    def test_find_placeholders_reports_all_tokens(self):
+        assert sorted(find_placeholders("Hi [Name], phone [Your Phone]")) == ["[Name]", "[Your Phone]"]

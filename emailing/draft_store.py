@@ -50,9 +50,18 @@ class EmailDraftStore:
     def upsert_draft(self, payload: dict[str, Any]) -> None:
         """Insert or refresh a draft keyed on (hunt_id, sequence_index).
 
+        This is the single write path for the contract table, so placeholder
+        sanitation happens here: whichever producer calls it (generator,
+        backfill, repair), a stored draft never contains raw placeholders.
+
         Manual review state is never overwritten by a re-write from the
         hunter side — approval decisions belong to the marketing service.
         """
+        payload = dict(payload)
+        if payload.get("emails"):
+            payload["emails"] = self._clean_emails(
+                list(payload.get("emails") or []), payload.get("target") or {}
+            )
         values = []
         for col in _DRAFT_COLS:
             value = payload.get(col, "")
@@ -146,6 +155,30 @@ class EmailDraftStore:
         with get_session() as session:
             row = fetch_one(session, "SELECT id FROM leads WHERE lead_key = ? LIMIT 1", (lead_key,))
         return str(row["id"]) if row else ""
+
+    @staticmethod
+    def _clean_emails(emails: list[Any], target: Any) -> list[Any]:
+        """Strip signature placeholders before a draft lands in the contract table.
+
+        Defense in depth: the generator already sanitizes, but drafts can also
+        arrive from the legacy-JSON backfill, so the boundary normalises again.
+        """
+        from config.settings import get_settings
+
+        from emailing.signature import recipient_display_name, sanitize_outreach_text
+
+        settings = get_settings()
+        recipient = recipient_display_name(target)
+        cleaned: list[Any] = []
+        for item in emails:
+            if not isinstance(item, dict):
+                cleaned.append(item)
+                continue
+            entry = dict(item)
+            entry["subject"] = sanitize_outreach_text(str(entry.get("subject", "") or ""), settings, recipient_name=recipient)
+            entry["body_text"] = sanitize_outreach_text(str(entry.get("body_text", "") or ""), settings, recipient_name=recipient)
+            cleaned.append(entry)
+        return cleaned
 
     def _payload_from_sequence(self, hunt_id: str, index: int, seq: dict[str, Any]) -> dict[str, Any]:
         lead = seq.get("lead") or {}

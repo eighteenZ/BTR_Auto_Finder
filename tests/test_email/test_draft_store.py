@@ -187,3 +187,74 @@ class TestCampaignJobDeferral:
 
         claimed = queue.claim_next("w2")
         assert claimed is not None and claimed["id"] == job["id"]
+
+
+class TestDraftStorePlaceholderSanitization:
+    """Drafts must never reach review containing raw placeholders."""
+
+    def _settings(self, monkeypatch):
+        class S:
+            email_signature_name = "Wendy"
+            email_signature_title = "Sales Manager"
+            email_signature_phone = "+1 8607978125"
+            email_from_name = "B2Binsights"
+            email_from_address = "sales@example.com"
+
+        monkeypatch.setattr("config.settings.get_settings", lambda: S())
+        return S()
+
+    def test_upsert_strips_placeholders_at_the_boundary(self, monkeypatch):
+        self._settings(monkeypatch)
+        store = EmailDraftStore()
+        hunt_id = str(uuid4())
+        payload = _draft_payload(hunt_id)
+        payload["target"] = {"target_email": "buyer@acme.com", "target_name": "Jane Doe"}
+        payload["emails"] = [
+            {
+                "sequence_number": 1,
+                "email_type": "company_intro",
+                "subject": "Intro from [Your Name]",
+                "body_text": "Dear [Name],\n\nNote of [date].\n\nBest regards,\n[Your Name]\n[Your Phone]",
+                "suggested_send_day": 0,
+            }
+        ]
+
+        store.upsert_draft(payload)
+        stored = store.get_draft_by_index(hunt_id, 0)
+
+        subject = stored["emails"][0]["subject"]
+        body = stored["emails"][0]["body_text"]
+        assert "[" not in subject
+        assert "[" not in body
+        assert subject == "Intro from Wendy"
+        assert body.startswith("Dear Jane Doe,")
+        assert "+1 8607978125" in body
+        assert "Note of" not in body or "Note" in body
+
+    def test_upsert_from_sequences_also_sanitizes(self, monkeypatch):
+        self._settings(monkeypatch)
+        store = EmailDraftStore()
+        hunt_id = str(uuid4())
+        sequences = [
+            {
+                "lead": {"company_name": "Acme", "website": "https://acme.com"},
+                "locale": "en_US",
+                "target": {"target_email": "buyer@acme.com", "target_name": "Jane Doe"},
+                "emails": [
+                    {
+                        "sequence_number": 1,
+                        "email_type": "company_intro",
+                        "subject": "Hello",
+                        "body_text": "Dear [Name],\n\nBest regards,\n[Your Name] | [Email Address]",
+                        "suggested_send_day": 0,
+                    }
+                ],
+            }
+        ]
+
+        store.upsert_from_sequences(hunt_id, sequences)
+        body = store.get_draft_by_index(hunt_id, 0)["emails"][0]["body_text"]
+
+        assert "[" not in body
+        assert body.startswith("Dear Jane Doe,")
+        assert "Wendy" in body and "sales@example.com" in body

@@ -130,6 +130,35 @@ def _clean_substituted_line(line: str) -> str:
     return line
 
 
+_GENERIC_BRACKET_TOKEN = re.compile(r"\[[^\[\]\n]{1,45}\]")
+
+# A token removed from mid-sentence usually leaves a dangling preposition
+# ("my note of [date]" → "my note"), so absorb it along with the token.
+_DANGLING_PREPOSITION = re.compile(
+    r"\s+\b(of|on|at|in|by|from|since|before|after|for)\b\s*\[[^\[\]\n]{1,45}\]",
+    re.IGNORECASE,
+)
+
+
+def find_placeholders(text: str) -> list[str]:
+    """Return bracket-style placeholder tokens still present in the text."""
+    return _GENERIC_BRACKET_TOKEN.findall(str(text or ""))
+
+
+def is_known_placeholder(token: str) -> bool:
+    """Whether a bracket token is one the sanitizer can fill in."""
+    return bool(_SENDER_PLACEHOLDER_PATTERN.fullmatch(str(token or "").strip()))
+
+
+def _strip_bracket_tokens(line: str) -> str:
+    """Remove leftover placeholder tokens, keeping the sentence readable."""
+    line = _DANGLING_PREPOSITION.sub("", line)
+    line = _GENERIC_BRACKET_TOKEN.sub("", line)
+    line = re.sub(r"[ \t]{2,}", " ", line)
+    line = re.sub(r"[ \t]+([,.;:!?])", r"\1", line)
+    return line.rstrip()
+
+
 def apply_sender_placeholders(
     text: str,
     *,
@@ -137,13 +166,21 @@ def apply_sender_placeholders(
     sender_title: str = "",
     sender_phone: str = "",
     sender_email: str = "",
+    recipient_name: str = "",
+    strip_unknown: bool = False,
 ) -> str:
     """Replace model-emitted signature placeholders with the configured identity.
 
-    Deterministic send-time safety net: whatever the generation model wrote,
-    the outbound body must never contain literal "[Your Name]"-style tokens.
-    "[Name]" on a salutation line refers to the recipient and falls back to a
-    neutral form of address.
+    Deterministic safety net applied both when a draft is generated and again
+    before sending: whatever the model wrote, an outbound body must never carry
+    literal "[Your Name]"-style tokens. "[Name]" on a salutation line refers to
+    the recipient and uses ``recipient_name`` when known, else a neutral form
+    of address.
+
+    ``strip_unknown`` additionally removes bracket tokens the sanitizer cannot
+    fill (e.g. "[date]"), so a stored draft never contains a raw placeholder;
+    callers that need to alert a human should compare ``find_placeholders``
+    before and after via ``is_known_placeholder``.
     """
     values = {
         "your name": str(sender_name or "").strip(),
@@ -166,6 +203,7 @@ def apply_sender_placeholders(
         "email": str(sender_email or "").strip(),
         "phone": str(sender_phone or "").strip(),
     }
+    salutation_fallback = str(recipient_name or "").strip() or "Sir/Madam"
 
     out_lines: list[str] = []
     for line in str(text or "").replace("\r\n", "\n").split("\n"):
@@ -186,7 +224,7 @@ def apply_sender_placeholders(
             def _sub(match: re.Match[str]) -> str:
                 key = match.group(1).lower()
                 if key == "name":
-                    return "Sir/Madam" if is_salutation else values["your name"]
+                    return salutation_fallback if is_salutation else values["your name"]
                 return values.get(key, "")
 
             replaced = _SENDER_PLACEHOLDER_PATTERN.sub(_sub, line)
@@ -200,6 +238,14 @@ def apply_sender_placeholders(
         if re.fullmatch(r"\[[^\[\]\n]{1,40}\]", line.strip()):
             # A line consisting solely of an unknown bracket token is a model
             # placeholder artifact (e.g. "[Address]"), never real content.
+            continue
+
+        if strip_unknown and find_placeholders(line):
+            # Tokens with no configured value (e.g. "[date]") would otherwise
+            # reach a human reviewer verbatim; drop them cleanly instead.
+            stripped = _strip_bracket_tokens(line)
+            if stripped.strip():
+                out_lines.append(stripped)
             continue
 
         out_lines.append(line)

@@ -16,7 +16,12 @@ import re
 from typing import Any
 
 from config.settings import get_settings
-from emailing.body_format import format_email_sequence_bodies, format_plaintext_email_body
+from emailing.body_format import (
+    find_placeholders,
+    format_email_sequence_bodies,
+    format_plaintext_email_body,
+    is_known_placeholder,
+)
 from emailing.policy import choose_email_target, expand_email_targets
 from emailing.template_pipeline import compose_template_plan, extract_template_profile
 from graph.state import HuntState
@@ -788,6 +793,59 @@ def _review_allows_send(review_summary: dict[str, Any], settings: Any) -> bool:
     if bool(getattr(settings, "email_require_approval_before_send", True)):
         return False
     return str(review_summary.get("status", "") or "") == "approved"
+
+
+def _sanitize_sequence_placeholders(sequence: dict[str, Any], settings: Any) -> int:
+    """Replace signature placeholders in a generated sequence, in place.
+
+    Drafts are what a human reviews and approves, so they must already read
+    like the final email — the send path applies the same sanitizer again as a
+    safety net. Tokens the sanitizer cannot fill (e.g. "[date]") are removed
+    from the text; because that changes the wording, the sequence is forced
+    back to needs_review and the removed tokens are recorded so a reviewer can
+    check the sentence still reads correctly.
+    """
+    from emailing.signature import recipient_display_name, sanitize_outreach_text
+
+    recipient = recipient_display_name(sequence.get("target") or {})
+    changed = 0
+    unknown: set[str] = set()
+
+    for email_item in sequence.get("emails") or []:
+        if not isinstance(email_item, dict):
+            continue
+        subject = str(email_item.get("subject", "") or "")
+        body = str(email_item.get("body_text", "") or "")
+        for original in (subject, body):
+            unknown.update(t for t in find_placeholders(original) if not is_known_placeholder(t))
+        clean_subject = sanitize_outreach_text(subject, settings, recipient_name=recipient)
+        clean_body = sanitize_outreach_text(body, settings, recipient_name=recipient)
+        if clean_subject != subject or clean_body != body:
+            email_item["subject"] = clean_subject
+            email_item["body_text"] = clean_body
+            changed += 1
+
+    if unknown:
+        tokens = sorted(unknown)
+        sequence["placeholder_issues"] = tokens
+        summary = sequence.setdefault("review_summary", {})
+        existing = list(summary.get("issues", []) or [])
+        summary["issues"] = existing + [
+            f"Removed unfillable placeholder(s) from draft: {', '.join(tokens)} — please re-read the affected sentences"
+        ]
+        summary["status"] = "needs_review"
+        sequence["review_status"] = "needs_review"
+        sequence["auto_send_eligible"] = False
+        logger.warning(
+            "[EmailCraft] Removed unfillable placeholder(s) for %s: %s",
+            (sequence.get("lead") or {}).get("company_name", "?"),
+            ", ".join(tokens),
+        )
+    # An earlier flag is deliberately kept: the sanitizer runs again on the
+    # same content (draft boundary, repair tooling) and the reviewer still
+    # needs to see that wording was altered.
+
+    return changed
 
 
 def _split_review_issues(
@@ -1739,6 +1797,9 @@ async def email_craft_node(state: HuntState) -> dict:
                 email_sequences.append(applied)
     finally:
         await llm.close()
+
+    for sequence in email_sequences:
+        _sanitize_sequence_placeholders(sequence, settings)
 
     logger.info("[EmailCraftAgent] Completed — %d/%d email sequences generated",
                 len(email_sequences), len(leads))

@@ -34,14 +34,9 @@ def _send_via_smtp_sync(
 
     from config.settings import get_settings
 
-    signature_settings = get_settings()
-    resolved_body = apply_sender_placeholders(
-        body_text,
-        sender_name=str(account.get("signature_name", "") or "") or signature_settings.email_signature_name,
-        sender_title=str(account.get("signature_title", "") or "") or signature_settings.email_signature_title,
-        sender_phone=str(account.get("signature_phone", "") or "") or signature_settings.email_signature_phone,
-        sender_email=str(account.get("from_email", "") or "") or signature_settings.email_from_address,
-    )
+    from emailing.signature import sanitize_outreach_text
+
+    resolved_body = sanitize_outreach_text(body_text, get_settings(), account=account)
     msg.set_content(format_plaintext_email_body(resolved_body))
 
     host = str(account.get("smtp_host", "") or "").strip()

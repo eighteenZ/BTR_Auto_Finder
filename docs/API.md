@@ -97,6 +97,13 @@ POST :8100/api/v1/email-drafts/{draft_id}/decision
 - 人工页面：`GET :8100/review`（列表 + 全文预览 + 批准/拒绝按钮）
 - 兼容旧路径：`POST :8100/api/v1/hunts/{hunt_id}/email-sequences/{index}/decision`
 
+**草稿内容保证**：草稿在**生成时**就完成签名净化，落库正文里不会出现 `[Your Name]`、`[Phone]`、`[Email]`、`[Title]`、`[Last Name]`、`[phone/email]` 等占位符——审批页看到的就是最终发出内容（发送时还会再净化一次兜底）。
+
+- 发信人身份取自 `.env` 的 `EMAIL_SIGNATURE_NAME` / `EMAIL_SIGNATURE_TITLE` / `EMAIL_SIGNATURE_PHONE`，邮箱取 `EMAIL_FROM_ADDRESS`；对应值未配置时该行整行删除，而不是留占位符
+- 称呼 `[Name]` 在问候语中优先用收件人姓名（`target_name`，兼容 `{"name": ...}` 嵌套结构），无姓名时用 `Dear Sir/Madam`
+- **无法填充的占位符**（如 `[date]`）会连同前置介词一并移除（"my note of [date]" → "my note"），同时该草稿标记 `needs_review`，并在 `review_summary.issues` 与 `placeholder_issues` 中记录被移除的标记，提示人工复核措辞
+- 存量脏草稿用 `python scripts/repair_draft_placeholders.py [--dry-run] [--include-hunts]` 批量清洗，幂等且保留审批状态
+
 **campaign_jobs 挂起机制**（全自动链路的关键）：队列路径的建 campaign 请求在草稿未决时**不会结束**，marketing 每 5 分钟回查一次；任一草稿被批准后自动建 campaign 并启动发送；全部拒绝则任务关闭；**72 小时**无人审批任务超时关闭（草稿本身永久保留，可事后手动建 campaign）。
 
 ### ④ 结果交付：导出 xlsx（hunter）
