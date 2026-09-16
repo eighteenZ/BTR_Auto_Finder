@@ -179,7 +179,6 @@ async def campaign_jobs_loop() -> None:
 
 @asynccontextmanager
 async def marketing_lifespan(app: FastAPI):
-    settings = get_settings()
     app.state.email_scheduler_task = asyncio.create_task(email_scheduler_loop())
     logger.info("[EmailScheduler] background loop started")
     app.state.email_reply_task = asyncio.create_task(email_reply_loop())

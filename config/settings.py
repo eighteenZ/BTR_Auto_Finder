@@ -48,26 +48,35 @@ def _resolve_env_file() -> str:
     return str(_PROJECT_ROOT / ".env")
 
 
-def _resolve_dir(relative: str) -> str:
-    """Resolve a writable directory path (created if missing in packaged mode)."""
+def _runtime_root() -> Path:
+    """Base directory for writable runtime state (uploads, caches, data dirs).
+
+    - Packaged build → user app-data dir.
+    - Wheel install → the project root resolves inside site-packages, which is
+      not a deployment directory, so prefer the current working directory
+      (the systemd unit sets WorkingDirectory to the app dir).
+    - Dev checkout → the current working directory when it looks like the
+      project (has a .env or a pyproject.toml), else the project root.
+    """
     d = _app_data_dir()
     if d is not None:
-        resolved = d / relative
-        resolved.mkdir(parents=True, exist_ok=True)
-        return str(resolved)
-    resolved = _PROJECT_ROOT / relative
+        return d
+    cwd = Path.cwd()
+    if (cwd / ".env").is_file() or (cwd / "pyproject.toml").is_file():
+        return cwd
+    return _PROJECT_ROOT
+
+
+def _resolve_dir(relative: str) -> str:
+    """Resolve a writable directory path, creating it if missing."""
+    resolved = _runtime_root() / relative
     resolved.mkdir(parents=True, exist_ok=True)
     return str(resolved)
 
 
 def _resolve_file(relative: str) -> str:
-    """Resolve a writable file path (parent dir created if missing in packaged mode)."""
-    d = _app_data_dir()
-    if d is not None:
-        resolved = d / relative
-        resolved.parent.mkdir(parents=True, exist_ok=True)
-        return str(resolved)
-    resolved = _PROJECT_ROOT / relative
+    """Resolve a writable file path, creating its parent if missing."""
+    resolved = _runtime_root() / relative
     resolved.parent.mkdir(parents=True, exist_ok=True)
     return str(resolved)
 

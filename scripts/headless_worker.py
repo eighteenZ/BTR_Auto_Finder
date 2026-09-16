@@ -37,8 +37,11 @@ class ApiError(RuntimeError):
     """Raised when the local API returns a non-success response."""
 
 
-class JobCancelledError(RuntimeError):
-    """Raised when a queue job was cancelled while it was running."""
+# Re-exported so existing imports (`from scripts.headless_worker import ...`)
+# keep working. The canonical definitions live in automation.job_control,
+# because the API service imports them and scripts/ is not distributed in
+# the wheel.
+from automation.job_control import JobCancelledError, campaign_name as _campaign_name  # noqa: E402
 
 
 def _notify_feishu(text: str) -> None:
@@ -175,10 +178,6 @@ def build_hunt_payload(args: argparse.Namespace) -> dict[str, Any]:
     if not payload["description"] and not payload["website_url"] and not payload["product_keywords"]:
         raise ValueError("description, website_url, or product_keywords is required")
     return payload
-
-
-def _campaign_name(prefix: str, hunt_id: str) -> str:
-    return f"{prefix} {hunt_id[:8]}".strip()
 
 
 def _wait_for_hunt(

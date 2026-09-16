@@ -43,10 +43,11 @@ from automation.notifier import (
     render_summary_text,
     send_feishu_text,
 )
+from automation.job_control import JobCancelledError, campaign_name as _campaign_name
 from automation.runtime import update_worker_state
 from config.settings import get_settings
+from emailing.store import EmailStore
 from api.marketing_app import campaign_jobs_loop, email_reply_loop, email_scheduler_loop
-from scripts.headless_worker import JobCancelledError, _campaign_name
 
 # Configure logging for the entire application
 logging.basicConfig(
