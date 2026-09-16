@@ -24,6 +24,7 @@ from api.app import (
 )
 from api.automation_routes import router as automation_router
 from api.leads_routes import router as leads_router
+from api.export_routes import router as export_router
 from api.routes import router
 from api.settings_routes import router as settings_router
 from api.sse import sse_router
@@ -87,6 +88,7 @@ def create_hunter_app() -> FastAPI:
     app.include_router(router, prefix="/api/v1")
     app.include_router(automation_router)
     app.include_router(leads_router)
+    app.include_router(export_router)
     app.include_router(sse_router, prefix="/api/v1")
     if settings.settings_api_enabled:
         app.include_router(settings_router)

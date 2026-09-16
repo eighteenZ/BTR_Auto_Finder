@@ -20,6 +20,7 @@ from api.email_routes import (
 )
 from api.hunt_store import load_all_hunts
 from api.leads_routes import router as leads_router
+from api.export_routes import router as export_router
 from api.routes import (
     HuntRequest,
     TemplateSeedRequest,
@@ -697,6 +698,7 @@ def create_app() -> FastAPI:
     app.include_router(automation_router)
     app.include_router(email_router)
     app.include_router(leads_router)
+    app.include_router(export_router)
     app.include_router(sse_router, prefix="/api/v1")
     if settings.settings_api_enabled:
         app.include_router(settings_router)

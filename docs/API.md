@@ -99,8 +99,27 @@ POST :8100/api/v1/email-drafts/{draft_id}/decision
 
 **campaign_jobs 挂起机制**（全自动链路的关键）：队列路径的建 campaign 请求在草稿未决时**不会结束**，marketing 每 5 分钟回查一次；任一草稿被批准后自动建 campaign 并启动发送；全部拒绝则任务关闭；**72 小时**无人审批任务超时关闭（草稿本身永久保留，可事后手动建 campaign）。
 
-### ④ campaign 管理（marketing）
+### ④ 结果交付：导出 xlsx（hunter）
 
+业务方要表格时用这个端点（按单个获客任务导出）：
+
+```bash
+GET :8000/api/v1/hunts/{hunt_id}/export?format=xlsx&view=brief   # 默认 brief
+GET :8000/api/v1/hunts/{hunt_id}/export?format=xlsx&view=full
+curl -OJ "http://<host>:8000/api/v1/hunts/<hunt_id>/export?view=full"   # -OJ 按响应文件名保存
+```
+
+- 返回 xlsx 附件（`Content-Disposition: attachment`），并带 `X-Lead-Count` / `X-Export-View` 响应头
+- `view=brief`（9 列）：公司名称、官网、国家/地区、行业、联系人、邮箱、电话、优先级、匹配度
+- `view=full`（21 列）：brief 全部 + 联系人职务、全部决策人、地址、社交媒体、客户类型、可触达度、契合度、证据强度、来源关键词、首次发现、最近更新、复用线索
+- `联系人` 优先取 `contact_person`，为空时回退到首位决策人；`全部决策人` 格式为 `姓名 (职务) <邮箱>`
+- 无线索时仍返回带表头的空表（不会报错）
+- 错误：`404` 任务不存在；`400` format 非 xlsx 或 view 取值非法
+
+> **全局线索库不提供导出**：`/api/v1/leads` 跨任务累积、无上界，整体导出有内存与耗时风险。
+> 需要时按 `limit`/`offset` 分页拉取自行汇总。
+
+### ⑤ campaign 管理（marketing）
 ```bash
 # 手动建 campaign（只收已批准草稿；全自动路径无需此步）
 POST :8100/api/v1/hunts/{hunt_id}/email-campaigns   {"name": "Batch 1"}
@@ -112,7 +131,7 @@ GET  :8100/api/v1/hunts/{hunt_id}/email-campaigns
 GET  :8100/api/v1/email-sequences/{sequence_id}
 ```
 
-### ⑤ 定时发送（marketing，自动）
+### ⑥ 定时发送（marketing，自动）
 
 `EMAIL_AUTO_SEND_ENABLED=true` 时调度器每 60 秒扫描到期消息：三步序列按生成时标注的第 0/3/7 天发送；发送正文经过**确定性净化**（签名占位符替换、联系方式行重写、招聘邮箱降权）。手动触发：`POST :8100/api/v1/email-scheduler/run`。
 
@@ -120,7 +139,7 @@ GET  :8100/api/v1/email-sequences/{sequence_id}
 
 单封手动直发（审批后）：`POST :8100/api/v1/email-drafts/{draft_id}/send` `{"sequence_number": 1}`
 
-### ⑥ 回信检测（marketing，自动）
+### ⑦ 回信检测（marketing，自动）
 
 `EMAIL_REPLY_DETECTION_ENABLED=true` + IMAP 配置后，检测到客户回复即把序列标记 `replied` 并自动取消后续跟进信。手动触发：`POST :8100/api/v1/email-replies/check`。
 
@@ -139,9 +158,10 @@ GET  :8100/api/v1/email-sequences/{sequence_id}
 | GET | `/api/v1/hunts/{id}/cost` | Token 成本摘要 |
 | POST | `/api/v1/hunts/{id}/resume` | 续跑已结束任务 |
 | GET | `/api/v1/hunts/{id}/stream` | SSE 实时进度 |
-| GET | `/api/v1/leads` | 全局线索库（`status=`、`domain=`、`hunt_id=` 过滤） |
+| GET | `/api/v1/leads` | 全局线索库（`status=`、`domain=`、`hunt_id=` 过滤；分页用 `limit`/`offset`） |
 | GET | `/api/v1/leads/{id}` | 线索详情（含出现历史） |
 | GET | `/api/v1/hunts/{id}/leads` | 任务的线索 |
+| GET | `/api/v1/hunts/{id}/export` | **导出该任务的线索为 xlsx**（业务交付，见 §4.1） |
 | POST | `/api/v1/automation/jobs` | 入队获客任务 |
 | GET | `/api/v1/automation/jobs[/{id}]` | 队列查询（含 `last_hunt_id`/进度） |
 | POST | `/api/v1/automation/jobs/{id}/cancel` · `/{id}/retry` | 取消/重试 |
