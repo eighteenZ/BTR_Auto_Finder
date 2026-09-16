@@ -87,6 +87,7 @@ CREATE TABLE email_drafts (
 	template_max_send_count INTEGER DEFAULT 0 NOT NULL, 
 	template_seed_source VARCHAR DEFAULT '', 
 	status VARCHAR DEFAULT 'draft' NOT NULL, 
+	edited_by_review BOOLEAN DEFAULT false NOT NULL, 
 	manual_review JSONB DEFAULT '{}'::jsonb NOT NULL, 
 	error TEXT DEFAULT '', 
 	created_at VARCHAR NOT NULL, 

@@ -323,6 +323,105 @@
         }
       }
     },
+    "/api/v1/email-drafts/{draft_id}/content": {
+      "patch": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Update Email Draft Content",
+        "description": "Let a reviewer edit the outreach content of a pending draft.\n\nOnly a pending (undecided) draft is editable. Content passes through the\nsame placeholder sanitizer as generation, so a stored draft never carries\nraw tokens; the edited flag also protects this wording from being clobbered\nby a hunter-side regeneration.",
+        "operationId": "update_email_draft_content_api_v1_email_drafts__draft_id__content_patch",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftContentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/email-drafts/{draft_id}/send": {
       "post": {
         "tags": [
@@ -1190,6 +1289,25 @@
         "type": "object",
         "title": "CreateCampaignRequest"
       },
+      "DraftContentUpdate": {
+        "properties": {
+          "emails": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Emails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emails"
+        ],
+        "title": "DraftContentUpdate"
+      },
       "DraftDecisionRequest": {
         "properties": {
           "decision": {
@@ -1234,6 +1352,11 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Manual Review"
+          },
+          "campaign_job_id": {
+            "type": "string",
+            "title": "Campaign Job Id",
+            "default": ""
           }
         },
         "type": "object",
