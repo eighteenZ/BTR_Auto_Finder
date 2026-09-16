@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     Float,
     ForeignKey,
@@ -295,6 +296,7 @@ class EmailDraft(Base):
     template_max_send_count = Column(Integer, nullable=False, server_default=text("0"))
     template_seed_source = Column(String, server_default=text("''"))
     status = Column(String, nullable=False, server_default=text("'draft'"))
+    edited_by_review = Column(Boolean, nullable=False, server_default=text("false"))
     manual_review = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     error = Column(Text, server_default=text("''"))
     created_at = Column(String, nullable=False)

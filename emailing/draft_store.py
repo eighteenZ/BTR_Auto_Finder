@@ -56,12 +56,17 @@ class EmailDraftStore:
 
         Manual review state is never overwritten by a re-write from the
         hunter side — approval decisions belong to the marketing service.
+        Content a reviewer has edited (``edited_by_review``) is also preserved:
+        a regeneration must not silently replace wording a human already fixed.
         """
         payload = dict(payload)
         if payload.get("emails"):
             payload["emails"] = self._clean_emails(
                 list(payload.get("emails") or []), payload.get("target") or {}
             )
+        key = (str(payload.get("hunt_id", "") or ""), payload.get("sequence_index"))
+        # Capture reviewer-edited content BEFORE the upsert overwrites it.
+        reviewer_edits = self._reviewer_emails_if_any(*key)
         values = []
         for col in _DRAFT_COLS:
             value = payload.get(col, "")
@@ -86,6 +91,29 @@ class EmailDraftStore:
                 f"ON CONFLICT(hunt_id, sequence_index) DO UPDATE SET {updates}",
                 values,
             )
+        if reviewer_edits is not None:
+            # A regeneration must not replace wording a human already edited:
+            # restore the reviewer's version (keeping the new non-content fields).
+            with get_session() as session:
+                execute(
+                    session,
+                    "UPDATE email_drafts SET emails = CAST(? AS jsonb), updated_at = ? "
+                    "WHERE hunt_id = ? AND sequence_index = ?",
+                    (json.dumps(reviewer_edits, ensure_ascii=False), now_iso(), key[0], key[1]),
+                )
+
+    def _reviewer_emails_if_any(self, hunt_id: str, sequence_index: Any) -> list[Any] | None:
+        """Return the reviewer-edited emails for a draft, or None if unedited."""
+        with get_session() as session:
+            row = fetch_one(
+                session,
+                "SELECT edited_by_review, emails FROM email_drafts "
+                "WHERE hunt_id = ? AND sequence_index = ?",
+                (hunt_id, sequence_index),
+            )
+        if row and row.get("edited_by_review"):
+            return row.get("emails") or []
+        return None
 
     def get_draft(self, draft_id: str) -> dict[str, Any] | None:
         with get_session() as session:
@@ -133,6 +161,29 @@ class EmailDraftStore:
                 session,
                 "UPDATE email_drafts SET status = ?, manual_review = CAST(? AS jsonb), updated_at = ? WHERE id = ?",
                 (decision, json.dumps(review, ensure_ascii=False), review["updated_at"], draft_id),
+            )
+        return self.get_draft(draft_id)
+
+    def update_emails(self, draft_id: str, emails: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """Replace a draft's outreach content on behalf of a human reviewer.
+
+        Only a pending (``status='draft'``) draft may be edited — an approved
+        draft's content must match what was approved, and a rejected draft is
+        history. Content passes through the placeholder sanitizer, so a stored
+        draft never carries raw tokens regardless of who wrote them. Returns
+        the updated draft, or ``None`` when the draft is not in an editable
+        state (caller maps that to 409).
+        """
+        current = self.get_draft(draft_id)
+        if not current or str(current.get("status", "")) != "draft":
+            return None
+        emails = self._clean_emails(list(emails or []), current.get("target") or {})
+        with get_session() as session:
+            execute(
+                session,
+                "UPDATE email_drafts SET emails = CAST(? AS jsonb), edited_by_review = true, "
+                "updated_at = ? WHERE id = ? AND status = 'draft'",
+                (json.dumps(emails, ensure_ascii=False), now_iso(), draft_id),
             )
         return self.get_draft(draft_id)
 

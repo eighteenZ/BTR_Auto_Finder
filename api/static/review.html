@@ -31,6 +31,18 @@
   .mail .subj { padding:8px 12px; background:#f1f5f9; font-size:13px; font-weight:600; display:flex; justify-content:space-between; gap:8px; }
   .mail .subj .day { color:var(--muted); font-weight:400; white-space:nowrap; }
   .mail pre { margin:0; padding:12px; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .mail.editing { border-color:#2563eb; }
+  .editpad { padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
+  .editpad label { font-size:12px; color:var(--muted); }
+  .editpad input, .editpad textarea {
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:1.6;
+    padding:8px 10px; border:1px solid var(--line); border-radius:6px; resize:vertical;
+  }
+  .editpad input:focus, .editpad textarea:focus { outline:2px solid #2563eb33; border-color:#2563eb; }
+  .edited-tag { color:#2563eb; }
+  .editing-hint { font-size:13px; color:#2563eb; }
+  button.start-edit, button.save-edit { background:#2563eb; border-color:#2563eb; color:#fff; }
+  button.cancel-edit { background:#fff; color:var(--muted); }
   .actions { margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .actions input { flex:1; min-width:180px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
   button { padding:7px 18px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:13px; }
@@ -101,11 +113,26 @@ function renderCard(d) {
   const issues = (review.issues || []).slice(0, 3);
   const manual = d.manual_review || {};
   const decided = d.status === "approved" || d.status === "rejected";
-  const mails = (d.emails || []).map((m) => `
+  const editing = editState.id === d.id;
+  const mails = (d.emails || []).map((m, i) => {
+    if (editing) {
+      return `
+    <div class="mail editing">
+      <div class="subj"><span>第 ${i + 1} 封</span><span class="day">${esc(dayLabel(m.suggested_send_day))}</span></div>
+      <div class="editpad">
+        <label>主题</label>
+        <input class="edit-subject" value="${esc(m.subject)}">
+        <label>正文</label>
+        <textarea class="edit-body" rows="${Math.min(20, Math.max(8, (m.body_text || "").split("\n").length + 2))}">${esc(m.body_text)}</textarea>
+      </div>
+    </div>`;
+    }
+    return `
     <div class="mail">
       <div class="subj"><span>${esc(m.subject)}</span><span class="day">${esc(dayLabel(m.suggested_send_day))}</span></div>
       <pre>${esc(m.body_text)}</pre>
-    </div>`).join("");
+    </div>`;
+  }).join("");
   return `
   <div class="card ${d.status}">
     <div class="head">
@@ -116,18 +143,53 @@ function renderCard(d) {
       官网：${esc(d.website || "-")} ｜ 语言：${esc(d.locale || "-")}
       ｜ 收件人：${esc(target.target_name || "-")}（${esc(target.target_title || "-")}）&lt;${esc(target.target_email || "-")}&gt;
       ${d.template_id ? `｜ 模板：${esc(d.template_id)}` : ""}
+      ${d.edited_by_review ? `｜ <b class="edited-tag">✎ 已人工编辑</b>` : ""}
       <br>生成于 ${esc((d.created_at || "").slice(0, 19).replace("T", " "))} ｜ hunt ${esc(String(d.hunt_id || "").slice(0, 8))}
     </div>
     ${review.status ? `<div class="review">自动校验：${esc(review.status)}（${esc(review.score ?? "-")} 分）${issues.length ? "｜ 问题：" + esc(issues.join("；")) : ""}</div>` : ""}
     ${manual.decision ? `<div class="review">人工${manual.decision === "approved" ? "批准" : "拒绝"}${manual.notes ? "：" + esc(manual.notes) : ""}（${esc((manual.updated_at || "").slice(0, 19).replace("T", " "))}）</div>` : ""}
+    ${(d.placeholder_issues || []).length ? `<div class="review">⚠️ 已自动移除无法填充的标记：${esc(d.placeholder_issues.join("、"))}，请复核相关句子</div>` : ""}
     <div class="mails">${mails}</div>
-    ${decided ? "" : `
+    ${decided ? "" : editing ? `
     <div class="actions">
+      <span class="editing-hint">编辑中——保存后内容即进入批准流程</span>
+      <button class="save-edit" data-id="${d.id}">✓ 保存修改</button>
+      <button class="cancel-edit">✗ 放弃</button>
+    </div>` : `
+    <div class="actions">
+      <button class="start-edit" data-id="${d.id}">✎ 编辑内容</button>
       <input class="notes" placeholder="备注（可选）">
       <button class="approve" data-id="${d.id}">✓ 批准</button>
       <button class="reject" data-id="${d.id}">✗ 拒绝</button>
     </div>`}
   </div>`;
+}
+
+const editState = { id: "", emails: [] };
+
+async function saveEdit(id, btn) {
+  const card = btn.closest(".card");
+  const emails = Array.from(card.querySelectorAll(".mail.editing")).map((el, i) => ({
+    sequence_number: i + 1,
+    subject: el.querySelector(".edit-subject").value.trim(),
+    body_text: el.querySelector(".edit-body").value,
+    suggested_send_day: (editState.emails[i] || {}).suggested_send_day ?? 0,
+    email_type: (editState.emails[i] || {}).email_type || "",
+  }));
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/v1/email-drafts/${id}/content`, {
+      method: "PATCH", headers: headers(),
+      body: JSON.stringify({ emails }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.status);
+    editState.id = "";
+    toast("已保存，编辑后的内容将随批准进入 campaign");
+    await load();
+  } catch (e) {
+    toast("保存失败：" + esc(e.message || e));
+    btn.disabled = false;
+  }
 }
 
 async function decide(id, decision, notes, btn) {
@@ -139,6 +201,7 @@ async function decide(id, decision, notes, btn) {
     });
     if (!res.ok) throw new Error((await res.json()).detail || res.status);
     toast(decision === "approved" ? "已批准，campaign 将自动创建" : "已拒绝");
+    editState.id = "";
     await load();
   } catch (e) {
     toast("操作失败：" + esc(e.message || e));
@@ -166,6 +229,20 @@ async function load() {
         const notes = b.closest(".actions").querySelector(".notes").value.trim();
         decide(b.dataset.id, decision, notes, b);
       });
+    });
+    document.querySelectorAll("button.start-edit").forEach((b) => {
+      b.addEventListener("click", () => {
+        const draft = (cur || []).find((d) => d.id === b.dataset.id);
+        editState.id = b.dataset.id;
+        editState.emails = (draft && draft.emails) || [];
+        load();   // re-render flips this card into its edit pad
+      });
+    });
+    document.querySelectorAll("button.cancel-edit").forEach((b) => {
+      b.addEventListener("click", () => { editState.id = ""; load(); });
+    });
+    document.querySelectorAll("button.save-edit").forEach((b) => {
+      b.addEventListener("click", () => saveEdit(b.dataset.id, b));
     });
   } catch (e) {
     list.innerHTML = `<div class="empty">加载失败：${esc(e.message || e)}<br>若非本机访问，请在右上角填写 API Token</div>`;

@@ -142,6 +142,11 @@ class DraftDecisionResponse(BaseModel):
     sequence_index: int
     decision: str
     manual_review: dict[str, Any]
+    campaign_job_id: str = ""
+
+
+class DraftContentUpdate(BaseModel):
+    emails: list[dict[str, Any]] = Field(min_length=1, max_length=3)
 
 
 class SendDraftRequest(BaseModel):
@@ -170,6 +175,23 @@ async def list_email_drafts(status: str = "", hunt_id: str = "", limit: int = 20
     return [_draft_public(d) for d in _draft_store().list_drafts(status=status, hunt_id=hunt_id, limit=limit)]
 
 
+def _ensure_campaign_job(hunt_id: str, *, campaign_name_prefix: str = "Auto campaign") -> str | None:
+    """Guarantee a campaign job exists for this hunt (idempotent).
+
+    Queue-driven hunts enqueue one at completion; direct `/hunts` runs do not.
+    Approving a draft from the review surface therefore tops one up so both
+    paths share the same wait-for-approval → build-campaign automation.
+    """
+    from emailing.draft_store import CampaignJobQueue
+
+    queue = CampaignJobQueue()
+    for job in queue.list_jobs(hunt_id=hunt_id, limit=50):
+        if str(job.get("status", "")) in {"queued", "running"}:
+            return str(job["id"])
+    job = queue.enqueue(hunt_id, {"name": f"{campaign_name_prefix} {hunt_id[:8]}", "auto_start": True})
+    return str(job["id"])
+
+
 async def _decide_draft(draft_id: str, request: DraftDecisionRequest) -> DraftDecisionResponse:
     drafts = _draft_store()
     draft = drafts.get_draft(draft_id)
@@ -177,12 +199,17 @@ async def _decide_draft(draft_id: str, request: DraftDecisionRequest) -> DraftDe
         raise HTTPException(status_code=404, detail="Email draft not found")
     updated = drafts.set_decision(draft_id, decision=request.decision, notes=request.notes)
     review = (updated or {}).get("manual_review") or {}
+    job_id = ""
+    if request.decision == "approved":
+        hunt_id = str(draft.get("hunt_id", "") or "")
+        job_id = await asyncio.to_thread(_ensure_campaign_job, hunt_id) if hunt_id else ""
     return DraftDecisionResponse(
         draft_id=draft_id,
         hunt_id=str(draft.get("hunt_id", "")),
         sequence_index=int(draft.get("sequence_index", 0) or 0),
         decision=request.decision,
         manual_review=review,
+        campaign_job_id=job_id,
     )
 
 
@@ -190,6 +217,82 @@ async def _decide_draft(draft_id: str, request: DraftDecisionRequest) -> DraftDe
 async def decide_email_draft(draft_id: str, request: DraftDecisionRequest):
     """Approve or reject a generated outreach draft."""
     return await _decide_draft(draft_id, request)
+
+
+_MAX_SEND_DAY = 30
+
+
+def _validated_emails(raw: list[dict[str, Any]], *, locale: str) -> list[dict[str, Any]]:
+    """Validate and normalise reviewer-supplied steps, preserving order."""
+    steps: list[dict[str, Any]] = []
+    for position, item in enumerate(raw, start=1):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=422, detail=f"Step {position} must be an object")
+        subject = str(item.get("subject", "") or "").strip()
+        body = str(item.get("body_text", "") or "").strip()
+        if not subject:
+            raise HTTPException(status_code=422, detail=f"Step {position}: subject must not be empty")
+        if not body:
+            raise HTTPException(status_code=422, detail=f"Step {position}: body_text must not be empty")
+        try:
+            sequence_number = int(item.get("sequence_number", position) or position)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"Step {position}: invalid sequence_number")
+        if sequence_number != position:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Step {position}: sequence_number must be {position} (steps stay in order, no gaps)",
+            )
+        try:
+            send_day = int(item.get("suggested_send_day", 0) or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"Step {position}: invalid suggested_send_day")
+        if not 0 <= send_day <= _MAX_SEND_DAY:
+            raise HTTPException(status_code=422, detail=f"Step {position}: suggested_send_day must be 0-{_MAX_SEND_DAY}")
+        steps.append({
+            "sequence_number": sequence_number,
+            "email_type": str(item.get("email_type", "") or ""),
+            "subject": subject,
+            "body_text": body,
+            "suggested_send_day": send_day,
+            **({"personalization_points": item["personalization_points"]} if item.get("personalization_points") else {}),
+            **({"cultural_adaptations": item["cultural_adaptations"]} if item.get("cultural_adaptations") else {}),
+        })
+    return steps
+
+
+@router.patch("/email-drafts/{draft_id}/content", dependencies=[Depends(require_api_access)])
+async def update_email_draft_content(draft_id: str, request: DraftContentUpdate):
+    """Let a reviewer edit the outreach content of a pending draft.
+
+    Only a pending (undecided) draft is editable. Content passes through the
+    same placeholder sanitizer as generation, so a stored draft never carries
+    raw tokens; the edited flag also protects this wording from being clobbered
+    by a hunter-side regeneration.
+    """
+    drafts = _draft_store()
+    draft = drafts.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+    if str(draft.get("status", "")) != "draft":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Draft is {draft.get('status')}; only pending drafts are editable",
+        )
+
+    steps = _validated_emails(request.emails, locale=str(draft.get("locale") or "en"))
+    settings = get_settings()
+    from emailing.signature import recipient_display_name, sanitize_outreach_text
+
+    recipient = recipient_display_name(draft.get("target") or {})
+    for step in steps:
+        step["subject"] = sanitize_outreach_text(step["subject"], settings, recipient_name=recipient)
+        step["body_text"] = sanitize_outreach_text(step["body_text"], settings, recipient_name=recipient)
+
+    updated = await asyncio.to_thread(drafts.update_emails, draft_id, steps)
+    if not updated:
+        raise HTTPException(status_code=409, detail="Draft is no longer pending")
+    return {"draft": updated, "edited_by_review": True}
 
 
 @router.post(

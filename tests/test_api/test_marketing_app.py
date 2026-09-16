@@ -264,3 +264,147 @@ class TestReviewPage:
         assert res.status_code == 200
         assert "邮件草稿审批" in res.text
         assert "email-drafts" in res.text
+
+
+class TestDraftContentPatch:
+    def _fake_settings(self):
+        class S:
+            email_db_path = ""
+            email_provider_type = "smtp"
+            email_from_name = "B2Binsights"
+            email_from_address = "sales@example.com"
+            email_reply_to = "sales@example.com"
+            email_smtp_host = "smtp.example.com"
+            email_smtp_port = 587
+            email_smtp_username = "sales@example.com"
+            email_smtp_password = "secret"
+            email_smtp_last_test_at = "2026-04-04T10:00:00Z"
+            email_imap_host = ""
+            email_imap_port = 993
+            email_imap_username = ""
+            email_imap_password = ""
+            email_use_tls = True
+            email_daily_send_limit = 50
+            email_hourly_send_limit = 10
+            email_language_mode = "auto_by_region"
+            email_default_language = "en"
+            email_fallback_language = "en"
+            email_tone = "professional"
+            email_step1_delay_days = 0
+            email_step2_delay_days = 3
+            email_step3_delay_days = 3
+            email_min_fit_score_to_send = 0.6
+            email_min_contactability_score_to_send = 0.45
+        return S()
+
+    def _patch(self, client, draft_id, emails):
+        return client.patch(f"/api/v1/email-drafts/{draft_id}/content", json={"emails": emails})
+
+    def test_patch_edits_pending_draft_and_sanitizes(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        draft_id = _seed_draft(hunt_id="hunt_p1", manual_review={})
+
+        res = self._patch(client, draft_id, [
+            {"sequence_number": 1, "email_type": "company_intro", "subject": "Revised [Your Name]",
+             "body_text": "Dear [Name],\n\nRevised body.\n\nPhone: 000-000-0000", "suggested_send_day": 0},
+            {"sequence_number": 2, "email_type": "product_showcase", "subject": "Step2",
+             "body_text": "Second step body.", "suggested_send_day": 4},
+        ])
+        assert res.status_code == 200
+        body = res.json()
+        assert body["edited_by_review"] is True
+
+        stored = EmailDraftStore().get_draft(draft_id)
+        assert stored["edited_by_review"] is True
+        assert len(stored["emails"]) == 2
+        # 净化：主题占位符被替换、正文的 Phone: 行被重写为配置值
+        assert stored["emails"][0]["subject"] == "Revised B2Binsights"
+        assert stored["emails"][0]["body_text"].startswith("Dear Jane,")
+        assert "000-000-0000" not in stored["emails"][0]["body_text"]
+
+    def test_patch_rejected_for_decided_draft(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        draft_id = _seed_draft(hunt_id="hunt_p2", manual_review={"decision": "approved"})
+
+        assert self._patch(client, draft_id, [
+            {"sequence_number": 1, "subject": "x", "body_text": "y"}]).status_code == 409
+
+    def test_patch_validates_steps(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        draft_id = _seed_draft(hunt_id="hunt_p3", manual_review={})
+
+        # 顺序必须连续（跳过 1 直接给 2）
+        r1 = self._patch(client, draft_id, [
+            {"sequence_number": 2, "subject": "s", "body_text": "b"}])
+        assert r1.status_code == 422
+        # 空主题
+        r2 = self._patch(client, draft_id, [
+            {"sequence_number": 1, "subject": "", "body_text": "b"}])
+        assert r2.status_code == 422
+        # send_day 超界
+        r3 = self._patch(client, draft_id, [
+            {"sequence_number": 1, "subject": "s", "body_text": "b", "suggested_send_day": 99}])
+        assert r3.status_code == 422
+
+    def test_unknown_draft_404(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        r = self._patch(client, "missing-id", [
+            {"sequence_number": 1, "subject": "s", "body_text": "b"}])
+        assert r.status_code == 404
+
+
+class TestApproveTopsUpCampaignJob:
+    def _fake_settings(self):
+        return TestDraftContentPatch._fake_settings(self)
+
+    def test_approve_enqueues_job_when_none_exists(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        draft_id = _seed_draft(hunt_id="hunt_j1", manual_review={})
+
+        res = client.post(f"/api/v1/email-drafts/{draft_id}/decision", json={"decision": "approved"})
+        assert res.status_code == 200
+        job_id = res.json()["campaign_job_id"]
+        assert job_id
+
+        from emailing.draft_store import CampaignJobQueue
+        job = CampaignJobQueue().get_job(job_id)
+        assert job["hunt_id"] == "hunt_j1"
+        assert job["status"] == "queued"
+
+    def test_approve_does_not_duplicate_existing_job(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        draft_id = _seed_draft(hunt_id="hunt_j2", manual_review={})
+
+        from emailing.draft_store import CampaignJobQueue
+        first = CampaignJobQueue().enqueue("hunt_j2", {"name": "already queued"})
+        res = client.post(f"/api/v1/email-drafts/{draft_id}/decision", json={"decision": "approved"})
+
+        assert res.json()["campaign_job_id"] == first["id"]
+        jobs = CampaignJobQueue().list_jobs(hunt_id="hunt_j2")
+        assert len(jobs) == 1
+
+    def test_reject_does_not_enqueue_job(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        draft_id = _seed_draft(hunt_id="hunt_j3", manual_review={})
+
+        res = client.post(f"/api/v1/email-drafts/{draft_id}/decision", json={"decision": "rejected"})
+        assert res.status_code == 200
+        assert res.json()["campaign_job_id"] == ""
+        from emailing.draft_store import CampaignJobQueue
+        assert CampaignJobQueue().list_jobs(hunt_id="hunt_j3") == []
+
+
+class TestReviewPageEditUI:
+    def test_review_page_contains_edit_affordances(self):
+        client = TestClient(create_marketing_app())
+        res = client.get("/review")
+        assert res.status_code == 200
+        for marker in ("start-edit", "save-edit", "edit-subject", "edit-body", "edited_by_review"):
+            assert marker in res.text

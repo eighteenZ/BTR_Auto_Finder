@@ -258,3 +258,65 @@ class TestDraftStorePlaceholderSanitization:
         assert "[" not in body
         assert body.startswith("Dear Jane Doe,")
         assert "Wendy" in body and "sales@example.com" in body
+
+
+class TestUpdateEmailsAndEditProtection:
+    def _settings(self, monkeypatch):
+        class S:
+            email_signature_name = "Wendy"
+            email_signature_title = "Sales Manager"
+            email_signature_phone = "+1 8607978125"
+            email_from_name = "B2Binsights"
+            email_from_address = "sales@example.com"
+
+        monkeypatch.setattr("config.settings.get_settings", lambda: S())
+        return S()
+
+    def test_update_emails_on_pending_draft(self, monkeypatch):
+        self._settings(monkeypatch)
+        store = EmailDraftStore()
+        hunt_id = str(uuid4())
+        store.upsert_draft(_draft_payload(hunt_id))
+        draft_id = store.get_draft_by_index(hunt_id, 0)["id"]
+
+        updated = store.update_emails(draft_id, [
+            {"sequence_number": 1, "email_type": "company_intro",
+             "subject": "Revised subject", "body_text": "Revised body with [Your Phone] inside.",
+             "suggested_send_day": 2},
+        ])
+
+        assert updated is not None
+        assert updated["edited_by_review"] is True
+        assert updated["status"] == "draft"                    # 状态不变
+        # 净化在写入边界生效：修改稿里的占位符也被洗掉
+        assert updated["emails"][0]["subject"] == "Revised subject"
+        assert "[Your Phone]" not in updated["emails"][0]["body_text"]
+        assert "+1 8607978125" in updated["emails"][0]["body_text"]
+
+    def test_update_rejected_on_decided_draft(self, monkeypatch):
+        self._settings(monkeypatch)
+        store = EmailDraftStore()
+        hunt_id = str(uuid4())
+        store.upsert_draft(_draft_payload(hunt_id))
+        draft_id = store.get_draft_by_index(hunt_id, 0)["id"]
+        store.set_decision(draft_id, decision="approved")
+
+        assert store.update_emails(draft_id, [{"sequence_number": 1, "subject": "x", "body_text": "y"}]) is None
+
+    def test_reviewer_edits_survive_regeneration(self, monkeypatch):
+        self._settings(monkeypatch)
+        store = EmailDraftStore()
+        hunt_id = str(uuid4())
+        store.upsert_draft(_draft_payload(hunt_id))
+        draft_id = store.get_draft_by_index(hunt_id, 0)["id"]
+
+        edited = [{"sequence_number": 1, "email_type": "company_intro",
+                   "subject": "Human wording", "body_text": "Human body", "suggested_send_day": 1}]
+        assert store.update_emails(draft_id, edited) is not None
+
+        # 获客侧重写同一 (hunt, index)：emails 被保护，人工版本保留
+        store.upsert_draft(_draft_payload(hunt_id, company_name="Acme Regenerated"))
+        after = store.get_draft(draft_id)
+        assert after["emails"][0]["subject"] == "Human wording"
+        assert after["emails"][0]["body_text"] == "Human body"
+        assert after["company_name"] == "Acme Regenerated"     # 非内容字段照常更新
