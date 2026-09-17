@@ -3,3 +3,6 @@
 .env
 .venv/
 __pycache__/
+
+# Legacy sqlite shell (real data lives in PostgreSQL); never commit
+email_automation.db
