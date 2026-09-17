@@ -195,7 +195,7 @@ vi .env
 | --- | --- |
 | `EMAIL_FROM_ADDRESS` / `EMAIL_SMTP_USERNAME` | 发信地址，两者相同 |
 | `EMAIL_SMTP_PASSWORD` | 服务商提供的 SMTP 密码（非邮箱登录密码） |
-| `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` | 例：阿里云 DirectMail 美区 `smtpdm-us-east-1.aliyuncs.com`，端口 `80` |
+| `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` | 例：阿里云 DirectMail 美区 `smtpdm-us-east-1.aliyuncs.com`。端口与 TLS 的组合：`465` + `EMAIL_USE_TLS=true`（隐式 SSL）或 `80` + `EMAIL_USE_TLS=true`（STARTTLS，本项目验收即用此组合并实发成功）。若见 `SSL: WRONG_VERSION_NUMBER`，说明在非 SSL 端口上做了隐式 SSL 握手——对照上表核对 80/465 与 TLS 开关的组合即可 |
 | `EMAIL_REPLY_TO` | 接收客户回复的邮箱（DirectMail 只发不收） |
 | `EMAIL_AUTO_SEND_ENABLED` | **先保持 false**，SMTP 测试通过后再改为 true |
 
@@ -286,13 +286,54 @@ curl -X POST localhost:8100/api/settings/email/imap-test    # 回信检测需要
 # 通过后把 .env 的 EMAIL_AUTO_SEND_ENABLED 改为 true，重启 ai-marketing-api
 ```
 
-## 11. 已知限制
+# 另需开启自动回信检测（与人工审核互不冲突）：
+#   .env 里 EMAIL_REPLY_DETECTION_ENABLED=true
+#   前置条件：上面 imap-test 必须已成功执行过一次（否则检测线程每轮抛
+#   "IMAP connection has not been verified yet"）。测试时间戳与 .env 同文件落盘，
+#   若怀疑路径跑偏，用第 11 节的一致性验证脚本检查。
+
+## 11. .env 读写路径一致性（wheel 安装）
+
+**历史 bug（已在本 wheel 中修复）**：早期构建里 `config/settings.py`（读配置）优先看
+`Path.cwd()/.env`，而 `config/settings_store.py`（写配置）按 `Path(__file__).parent.parent`
+推导，直接落在 `.venv/lib/pythonX.Y/site-packages/.env`。
+
+后果：**在设置页保存的任何配置（SMTP/IMAP/LLM/开关）都不会写入 `/opt/ai-hunter/.env`**，
+只写进 venv 里一个孤立文件，服务重启后全部丢失；同时 IMAP 测试时间戳无法落盘，
+导致「自动回复检测」即使开启也会每轮报
+`IMAP connection has not been verified yet`。
+
+**现状**：两个模块已统一为同一套 CWD 优先解析（上游修复已包含在本 wheel 中），
+正常部署无需任何手工步骤。曾按旧文档做过 site-packages 符号链接的环境，
+升级后该链接不再需要，建议删除以免混淆。
+
+**验证读写指向同一文件**：
+
+```bash
+cd /opt/ai-hunter && sudo .venv/bin/python - <<'EOF'
+from pathlib import Path
+from config.settings_store import get_env_path
+from config.settings import _resolve_env_file
+print("write:", get_env_path())
+print("read :", _resolve_env_file())
+print("same :", get_env_path().resolve() == Path(_resolve_env_file()).resolve())   # 必须 True
+EOF
+```
+
+`same : False` 时清理残留符号链接并重验：
+
+```bash
+SP=$(/opt/ai-hunter/.venv/bin/python -c "import sysconfig;print(sysconfig.get_paths()['purelib'])")
+[ -L "$SP/.env" ] && rm -f "$SP/.env" && echo "stale symlink removed"
+```
+
+## 12. 已知限制
 
 发送调度器只按 `scheduled_at` 判定，**不检查工作时间、时区、工作日、每日/每小时限流**
 （配置项存在但未被消费）。邮件会在 campaign 启动后按 0/3/7 天偏移随时发出，
 放量节奏需自行控制（如分小批建 campaign）。
 
-## 12. 升级
+## 13. 升级
 
 release 分支是线性累积的，升级即快进拉取。先固定拉取策略，避免误产生 merge：
 
@@ -318,6 +359,11 @@ git pull                                   # 快进拉取新产物
 # 若升级说明提到新表： psql "$PSQL_URL" -f schema.sql
 sudo systemctl restart ai-hunter-api ai-marketing-api
 ```
+
+> ⚠️ **升级后建议复查第 11 节的路径一致性**：`--force-reinstall` 若清空过
+> `site-packages`，旧部署时代创建的 `site-packages/.env` 符号链接会一并丢失。
+> 跑一遍第 11 节的验证脚本，`same : False` 就按其指引清理残留链接再重验。
+> 从未做过符号链接修复的环境不受影响。
 
 ⚠️ 拆分模式与合并模式（`api.app:app`）二选一部署；`EMAIL_AUTO_SEND_ENABLED` 只能由一个进程承载，
 否则同一封邮件会被两个调度器重复发送。
@@ -348,6 +394,9 @@ cat > "$WORK/.gitignore" <<'EOF'
 .env
 .venv/
 __pycache__/
+
+# Legacy sqlite shell (real data lives in PostgreSQL); never commit
+email_automation.db
 EOF
 mv "$WORK/.gitignore" "$WORK/payload/.gitignore"
 
