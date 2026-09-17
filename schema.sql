@@ -220,6 +220,20 @@ CREATE TABLE leads (
 	UNIQUE (lead_key)
 );
 
+CREATE TABLE users (
+	id VARCHAR NOT NULL, 
+	email VARCHAR NOT NULL, 
+	role VARCHAR DEFAULT 'member' NOT NULL, 
+	api_key VARCHAR DEFAULT '' NOT NULL, 
+	auth_provider VARCHAR DEFAULT 'imap' NOT NULL, 
+	active BOOLEAN DEFAULT true NOT NULL, 
+	created_at VARCHAR NOT NULL, 
+	last_login_at VARCHAR DEFAULT '', 
+	PRIMARY KEY (id), 
+	UNIQUE (email), 
+	UNIQUE (api_key)
+);
+
 CREATE TABLE hunt_leads (
 	hunt_id VARCHAR NOT NULL, 
 	lead_id VARCHAR NOT NULL, 
