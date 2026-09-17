@@ -188,15 +188,59 @@ sudo ss -tlnp | grep 5432        # 应只监听 127.0.0.1
 curl -X POST localhost:8100/api/settings/email/test         # SMTP 连通（发送资格的前置条件）
 curl -X POST localhost:8100/api/settings/email/imap-test    # 回信检测需要
 # 通过后把 .env 的 EMAIL_AUTO_SEND_ENABLED 改为 true，重启 ai-marketing-api
+
+# 另需开启自动回信检测（与人工审核互不冲突）：
+#   .env 里 EMAIL_REPLY_DETECTION_ENABLED=true
+#   前置条件：上面 imap-test 必须已成功执行过一次（否则检测线程每轮抛
+#   "IMAP connection has not been verified yet"）。
+#   注意 imap-test 的落盘依赖第 11 节的符号链接修复，否则时间戳写不进真实 .env。
 ```
 
-## 11. 已知限制
+## 11. 部署必做：修正 .env 读写路径（wheel 安装专属）
+
+**背景 bug**：本项目以 wheel 形式装入 `.venv`，`config/settings.py`（读配置）会先看
+`Path.cwd()/.env`，而 `config/settings_store.py`（写配置）按 `Path(__file__).parent.parent`
+推导，直接落在 `.venv/lib/pythonX.Y/site-packages/.env`。
+
+后果：**在设置页保存的任何配置（SMTP/IMAP/LLM/开关）都不会写入 `/opt/ai-hunter/.env`**，
+只写进 venv 里一个孤立文件，服务重启后全部丢失；同时 `IMAP 测试时间戳` 无法落盘，
+导致「自动回复检测」即使开启也会每轮报
+`IMAP connection has not been verified yet`。
+
+**修复（每个环境部署后执行一次；重建 venv 后需重做）**：
+
+```bash
+SP=$(/opt/ai-hunter/.venv/bin/python -c "import sysconfig;print(sysconfig.get_paths()['purelib'])")
+sudo rm -f "$SP/.env"
+sudo ln -s /opt/ai-hunter/.env "$SP/.env"
+```
+
+验证读写指向同一文件：
+
+```bash
+cd /opt/ai-hunter && sudo .venv/bin/python - <<'EOF'
+import sys; sys.path.insert(0, "/opt/ai-hunter")
+from pathlib import Path
+from config.settings_store import get_env_path
+from config.settings import _resolve_env_file
+print("write:", get_env_path())
+print("read :", _resolve_env_file())
+print("same :", get_env_path().resolve() == Path(_resolve_env_file()).resolve())   # 必须 True
+EOF
+```
+
+`same : True` 即修复完成。
+
+> 若上游在 `settings_store.get_env_path()` 中改为与 `settings._resolve_env_file()`
+> 一致的 cwd 优先逻辑，可移除本符号链接。届时以源码为准。
+
+## 12. 已知限制
 
 发送调度器只按 `scheduled_at` 判定，**不检查工作时间、时区、工作日、每日/每小时限流**
 （配置项存在但未被消费）。邮件会在 campaign 启动后按 0/3/7 天偏移随时发出，
 放量节奏需自行控制（如分小批建 campaign）。
 
-## 12. 升级
+## 13. 升级
 
 release 分支是线性累积的，升级即快进拉取。先固定拉取策略，避免误产生 merge：
 
@@ -222,6 +266,10 @@ git pull                                   # 快进拉取新产物
 # 若升级说明提到新表： psql "$PSQL_URL" -f schema.sql
 sudo systemctl restart ai-hunter-api ai-marketing-api
 ```
+
+> ⚠️ **升级后务必复查第 11 节的符号链接**：`--force-reinstall` 重建 wheel 时若清空了
+> `site-packages`，`site-packages/.env` 符号链接会一并丢失，配置写入会再次跑偏。
+> 执行第 11 节的验证脚本，`same : False` 就重做一次。
 
 ⚠️ 拆分模式与合并模式（`api.app:app`）二选一部署；`EMAIL_AUTO_SEND_ENABLED` 只能由一个进程承载，
 否则同一封邮件会被两个调度器重复发送。
