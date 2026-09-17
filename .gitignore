@@ -80,3 +80,6 @@ logs/
 # ── Jupyter ──────────────────────────────────────────────────
 .ipynb_checkpoints/
 *.ipynb
+
+# Legacy sqlite shell (real data lives in PostgreSQL); never commit
+email_automation.db

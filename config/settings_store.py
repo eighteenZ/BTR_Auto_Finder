@@ -21,7 +21,16 @@ _LLM_KEYS = {
 
 
 def get_env_path() -> Path:
-    """Return the effective .env file path for dev or packaged mode."""
+    """Return the effective .env file path for dev or packaged mode.
+
+    Delegates to ``config.settings._resolve_env_file`` so the write path and
+    the read path always resolve to the same file. They used to disagree under
+    a wheel install (write side derived site-packages/.env from __file__,
+    read side preferred the CWD): settings saved from the API silently landed
+    in the venv and were lost on restart. Ops workaround for that bug was a
+    site-packages symlink — with this fix the symlink is unnecessary and can
+    be removed.
+    """
     if getattr(sys, "frozen", False):
         system = platform.system()
         if system == "Darwin":
@@ -34,7 +43,10 @@ def get_env_path() -> Path:
             base = Path.home() / ".config" / "AIHunter"
         base.mkdir(parents=True, exist_ok=True)
         return base / ".env"
-    return _PROJECT_ROOT / ".env"
+
+    from config.settings import _resolve_env_file
+
+    return Path(_resolve_env_file())
 
 
 def read_settings() -> dict[str, str]:
