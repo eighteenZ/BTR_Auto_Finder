@@ -210,7 +210,24 @@ psql "$PSQL_URL" -c '\dt'        # 应列出 12 张表
 
 > schema 只建表，不需要扩展或特殊权限；仅能在空库上执行一次。
 
-## 6. 启动服务
+## 6. 创建管理员账号（账号系统）
+
+系统用企业邮箱登录（IMAP 验证凭据，不存密码），必须先建一个 admin 才能使用界面：
+
+```bash
+cd "$APP_DIR"
+# .env 需已配置 EMAIL_IMAP_HOST（企业邮箱的 IMAP 服务器，如 imap.exmail.qq.com）
+.venv/bin/python scripts/create_user.py --admin --email you@company.com
+# 按提示输入邮箱密码做一次 IMAP 验证；成功即建号并打印个人 api_key
+# 邮件服务器不可达时可加 --no-verify 跳过验证；其他子命令见 --help
+```
+
+- 登录入口 `:8100/login`；审批页 `:8100/review` 未登录会跳转登录页
+- 程序化调用（openclaw）用打印出的个人 api_key（`X-API-Key` 头）
+- 旧共享 `API_ACCESS_TOKEN` 仍有效（admin 级过渡通道），不配置即关闭
+- ⚠️ 设置接口（SMTP 密码/LLM key）现在**仅 admin 可访问**
+
+## 7. 启动服务
 
 ```bash
 cd "$APP_DIR"
@@ -228,7 +245,7 @@ systemctl is-active ai-hunter-api ai-marketing-api
 
 排障：`sudo journalctl -u ai-hunter-api -n 50 --no-pager`
 
-## 7. 验证
+## 8. 验证
 
 ```bash
 curl -s localhost:8000/api/v1/health; echo
@@ -247,7 +264,7 @@ psql "$PSQL_URL" -c 'SELECT count(*) FROM hunts;'    # 应 > 0
 > ⚠️ 这步落库验证必须做。存储层在写库失败时只打 warning、不会让任务失败，
 > 所以 `DATABASE_URL` 填错时服务看起来完全正常（health 返回 ok），但数据一条都不落库。
 
-## 8. 安全
+## 9. 安全
 
 ```bash
 # 1) 生成并填入 API_ACCESS_TOKEN，然后重启
@@ -261,7 +278,7 @@ sudo ufw allow 8100/tcp
 sudo ss -tlnp | grep 5432        # 应只监听 127.0.0.1
 ```
 
-## 9. 邮件启用顺序
+## 10. 邮件启用顺序
 
 ```bash
 curl -X POST localhost:8100/api/settings/email/test         # SMTP 连通（发送资格的前置条件）
@@ -269,13 +286,13 @@ curl -X POST localhost:8100/api/settings/email/imap-test    # 回信检测需要
 # 通过后把 .env 的 EMAIL_AUTO_SEND_ENABLED 改为 true，重启 ai-marketing-api
 ```
 
-## 10. 已知限制
+## 11. 已知限制
 
 发送调度器只按 `scheduled_at` 判定，**不检查工作时间、时区、工作日、每日/每小时限流**
 （配置项存在但未被消费）。邮件会在 campaign 启动后按 0/3/7 天偏移随时发出，
 放量节奏需自行控制（如分小批建 campaign）。
 
-## 11. 升级
+## 12. 升级
 
 release 分支是线性累积的，升级即快进拉取。先固定拉取策略，避免误产生 merge：
 

@@ -257,9 +257,18 @@ class TestCampaignJobApprovalDeferral:
 
 
 class TestReviewPage:
-    def test_review_page_served(self):
-        app = create_marketing_app()
-        client = TestClient(app)
+    def test_review_page_redirects_anonymous_to_login(self):
+        client = TestClient(create_marketing_app())
+        res = client.get("/review", follow_redirects=False)
+        assert res.status_code == 302
+        assert "/login" in res.headers["location"]
+
+    def test_review_page_served_after_login(self):
+        import api.auth as auth
+
+        auth.create_user("wendy@btrlgts.com", role="admin", verify_password=None)
+        client = TestClient(create_marketing_app())
+        client.post("/api/auth/login", json={"email": "wendy@btrlgts.com", "password": "x"})
         res = client.get("/review")
         assert res.status_code == 200
         assert "邮件草稿审批" in res.text
@@ -403,7 +412,11 @@ class TestApproveTopsUpCampaignJob:
 
 class TestReviewPageEditUI:
     def test_review_page_contains_edit_affordances(self):
+        import api.auth as auth
+
+        auth.create_user("wendy@btrlgts.com", role="admin", verify_password=None)
         client = TestClient(create_marketing_app())
+        client.post("/api/auth/login", json={"email": "wendy@btrlgts.com", "password": "x"})
         res = client.get("/review")
         assert res.status_code == 200
         for marker in ("start-edit", "save-edit", "edit-subject", "edit-body", "edited_by_review"):

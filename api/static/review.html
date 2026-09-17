@@ -50,6 +50,9 @@
   button.reject { background:#fff; border-color:var(--bad); color:var(--bad); }
   button:disabled { opacity:.5; cursor:default; }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
+  .who { margin-left:auto; font-size:13px; color:var(--muted); }
+  .who b { color:#0f172a; }
+  button#logout { margin-left:10px; font-size:12px; padding:6px 12px; }
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#0f172a; color:#fff; padding:8px 18px; border-radius:999px; font-size:13px; opacity:0; transition:opacity .25s; pointer-events:none; }
   .toast.show { opacity:1; }
 </style>
@@ -58,9 +61,8 @@
 <header>
   <h1>邮件草稿审批</h1>
   <div class="tabs" id="tabs"></div>
-  <label id="token">API Token（非本机访问时填）
-    <input id="tokenInput" placeholder="X-API-Key" type="password">
-  </label>
+  <div id="who" class="who"></div>
+  <button id="logout" style="display:none" onclick="doLogout()">退出登录</button>
 </header>
 <main><div id="list"></div></main>
 <div class="toast" id="toast"></div>
@@ -73,14 +75,32 @@ const STATUS = [
 let current = "draft";
 
 const $ = (id) => document.getElementById(id);
-const tokenInput = $("tokenInput");
-tokenInput.value = localStorage.getItem("review_token") || "";
-tokenInput.addEventListener("change", () => localStorage.setItem("review_token", tokenInput.value.trim()));
+let currentEmail = "";
 
 function headers() {
-  const h = { "Content-Type": "application/json" };
-  if (tokenInput.value.trim()) h["X-API-Key"] = tokenInput.value.trim();
-  return h;
+  // Session cookie authenticates automatically; per-user API keys still work.
+  return { "Content-Type": "application/json" };
+}
+
+async function checkAuth() {
+  try {
+    const res = await fetch("/api/auth/me", { headers: headers() });
+    if (res.status === 401 || res.status === 403) { location.replace("/login?next=" + encodeURIComponent(location.pathname)); return null; }
+    const body = await res.json();
+    currentEmail = (body.user || {}).email || "";
+    const isAdmin = (body.user || {}).role === "admin";
+    document.getElementById("who").innerHTML = `<b>${esc(currentEmail)}</b>${isAdmin ? " · admin" : ""}`;
+    document.getElementById("logout").style.display = "inline-block";
+    return body.user;
+  } catch (e) {
+    document.getElementById("who").textContent = "登录态检查失败";
+    return null;
+  }
+}
+
+async function doLogout() {
+  await fetch("/api/auth/logout", { method: "POST", headers: headers() });
+  location.replace("/login");
 }
 
 function toast(msg) {
@@ -212,6 +232,8 @@ async function decide(id, decision, notes, btn) {
 async function load() {
   const list = $("list");
   list.innerHTML = `<div class="empty">加载中…</div>`;
+  const me = await checkAuth();
+  if (!me) return;
   try {
     const [cur, all] = await Promise.all([
       fetch(`/api/v1/email-drafts?status=${current}&limit=200`, { headers: headers() }).then((r) => r.json()),
@@ -245,7 +267,7 @@ async function load() {
       b.addEventListener("click", () => saveEdit(b.dataset.id, b));
     });
   } catch (e) {
-    list.innerHTML = `<div class="empty">加载失败：${esc(e.message || e)}<br>若非本机访问，请在右上角填写 API Token</div>`;
+    list.innerHTML = `<div class="empty">加载失败：${esc(e.message || e)}<br>会话可能已过期，<a href="/login?next=/review">重新登录</a></div>`;
   }
 }
 

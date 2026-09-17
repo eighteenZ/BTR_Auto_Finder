@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 · AI Hunter</title>
+<style>
+  :root { --line:#e2e8f0; --muted:#64748b; --bg:#f1f5f9; --brand:#2563eb; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); color:#0f172a; }
+  .box { background:#fff; border:1px solid var(--line); border-radius:14px; padding:36px 40px; width:360px; box-shadow:0 8px 30px rgba(15,23,42,.06); }
+  h1 { font-size:19px; margin:0 0 4px; }
+  .sub { font-size:13px; color:var(--muted); margin-bottom:24px; }
+  label { display:block; font-size:13px; margin:14px 0 6px; }
+  input { width:100%; padding:9px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  input:focus { outline:2px solid #2563eb33; border-color:var(--brand); }
+  button { width:100%; margin-top:22px; padding:10px; border:0; border-radius:8px; background:var(--brand); color:#fff; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .err { display:none; margin-top:14px; padding:9px 12px; border-radius:8px; background:#fef2f2; color:#b91c1c; font-size:13px; }
+  .brandline { text-align:center; margin-top:18px; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>AI Hunter 登录</h1>
+  <div class="sub">使用企业邮箱地址与邮箱密码登录</div>
+  <form id="f">
+    <label for="email">企业邮箱</label>
+    <input id="email" type="email" autocomplete="username" required placeholder="you@company.com">
+    <label for="password">邮箱密码</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button id="go" type="submit">登 录</button>
+    <div class="err" id="err"></div>
+  </form>
+  <div class="brandline">Better International Logistics · 内部系统</div>
+</div>
+<script>
+const params = new URLSearchParams(location.search);
+const next = params.get("next") || "/review";
+
+document.getElementById("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("go");
+  const err = document.getElementById("err");
+  err.style.display = "none";
+  btn.disabled = true;
+  btn.textContent = "验证中…";
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: document.getElementById("email").value.trim(),
+        password: document.getElementById("password").value,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 503) {
+      err.textContent = "邮件服务器不可达：" + (body.detail || res.status);
+      err.style.display = "block";
+      return;
+    }
+    if (!res.ok) {
+      err.textContent = body.detail || ("登录失败 (" + res.status + ")");
+      err.style.display = "block";
+      return;
+    }
+    // Old shared-token flow is gone; drop any stale value.
+    localStorage.removeItem("review_token");
+    location.replace(next.startsWith("/") ? next : "/review");
+  } catch (ex) {
+    err.textContent = "网络错误：" + ex.message;
+    err.style.display = "block";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "登 录";
+  }
+});
+</script>
+</body>
+</html>

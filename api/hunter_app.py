@@ -12,7 +12,6 @@ import logging
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from api.app import (
     _automation_consumer_loop,
@@ -22,6 +21,7 @@ from api.app import (
     _now_iso,
     _template_seed_prewarm_loop,
 )
+from api.app_common import _install_common
 from api.automation_routes import router as automation_router
 from api.leads_routes import router as leads_router
 from api.export_routes import router as export_router
@@ -82,8 +82,7 @@ def create_hunter_app() -> FastAPI:
         lifespan=hunter_lifespan,
     )
 
-    if settings.cors_origins:
-        app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+    _install_common(app, settings)
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(automation_router)

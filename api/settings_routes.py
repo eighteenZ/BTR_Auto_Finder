@@ -6,7 +6,9 @@ import asyncio
 import os as _os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from api.security import require_admin
 from pydantic import BaseModel
 
 from config.settings import get_settings
@@ -15,7 +17,7 @@ from automation.notifier import send_feishu_text
 from emailing.imap_client import test_imap_connection
 from emailing.smtp_client import test_smtp_connection
 
-router = APIRouter(prefix="/api/settings", tags=["settings"])
+router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_admin)])
 
 
 class SettingsPayload(BaseModel):

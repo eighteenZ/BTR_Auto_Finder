@@ -665,7 +665,9 @@ def test_email_routes_require_token_when_configured(monkeypatch, tmp_path):
 
     get_settings.cache_clear()
     app = create_app()
-    client = TestClient(app)
+    # Remote address: under the account system, localhost is trusted without
+    # credentials, so the token gate is asserted from an outside host.
+    client = TestClient(app, client=("203.0.113.7", 44300))
 
     monkeypatch.setattr("api.email_routes.get_settings", lambda: type("S", (), {
         "email_db_path": str(tmp_path / "email.db"),

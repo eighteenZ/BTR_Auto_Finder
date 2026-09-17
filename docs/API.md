@@ -22,18 +22,36 @@ openclaw ──HTTP──▶ hunter(:8000)                     openclaw ──HT
 - 健康检查：`GET :8000/api/v1/health`、`GET :8100/api/v1/health`
 - Swagger UI：两服务各自的 `/docs`
 
-## 2. 认证
+## 2. 认证与账号（企业邮箱登录）
 
-所有业务端点（除 health）需要认证：设置 `API_ACCESS_TOKEN` 后，请求须携带（三选一）：
+### 2.1 交互式用户（审批页 / Swagger）
+
+浏览器打开 `:8100/login`，用**企业邮箱地址 + 邮箱密码**登录（凭据由企业邮件服务器 IMAP 即时验证，本系统不存密码）。会话 cookie 有效期 7 天；`:8100/review` 未登录会自动跳转登录页。
+
+- 角色：`admin`（可读写设置、管理用户）/ `member`（审批、campaign、线索、导出）
+- 首个 admin 由部署者在服务器创建：`python scripts/create_user.py --admin --email you@company.com`
+- 登出：`POST /api/auth/logout`；当前身份：`GET /api/auth/me`
+
+### 2.2 程序化调用（openclaw 等）
+
+每个用户有一个个人 API key（首次创建账号时生成），沿用旧的请求头方式：
 
 ```http
-X-API-Key: <token>
-Authorization: Bearer <token>
-GET /api/v1/hunts?api_key=<token>
+X-API-Key: ahk_xxxx
+# 或
+Authorization: Bearer ahk_xxxx
 ```
 
-- **localhost 来源的请求免鉴权**（本机调试友好）
-- 未认证返回 `401/403`
+- member 的 key 只能调业务端点（草稿/campaign/线索/导出）；admin 的 key 额外可调设置与用户管理
+- key 泄露时由 admin 重置：`POST :8100/api/auth/users/{email}/reset-api-key`
+- 用户管理端点（admin）：`GET/POST /api/auth/users`、`DELETE /api/auth/users/{email}`、`POST /api/auth/users/{email}/role`
+
+### 2.3 兼容与例外
+
+- 旧共享 `API_ACCESS_TOKEN` **继续有效并视为 admin**（过渡期 break-glass；不再配置即关闭此通道）
+- **localhost 来源的请求免鉴权**（本机调试与 systemd 脚本）
+- `GET /api/v1/health` 免鉴权
+- 语义注意：**显式提供了错误凭据一律 401**（即使来自 localhost）；未提供凭据时 localhost 放行、远程 401/403
 
 ## 3. 核心工作流（时序）
 

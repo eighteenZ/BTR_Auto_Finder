@@ -13,8 +13,7 @@ import socket
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
 
 from api.email_routes import (
     CreateCampaignRequest,
@@ -22,6 +21,7 @@ from api.email_routes import (
     router as email_router,
     start_email_campaign,
 )
+from api.app_common import _install_common
 from api.settings_routes import router as settings_router
 from config.settings import get_settings
 from emailing.draft_store import CampaignJobQueue, EmailDraftStore, now_iso
@@ -206,20 +206,33 @@ def create_marketing_app() -> FastAPI:
         lifespan=marketing_lifespan,
     )
 
-    if settings.cors_origins:
-        app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+    _install_common(app, settings)
 
     @app.get("/api/v1/health", tags=["health"])
     async def marketing_health():
         return {"status": "ok", "service": "ai-hunter-marketing", "time": now_iso()}
 
     @app.get("/review", include_in_schema=False)
-    async def draft_review_page():
+    async def draft_review_page(request: Request):
         """Single-page draft review UI (list / preview / approve / reject)."""
+        import api.auth as auth
+        from api.auth_routes import SESSION_USER_KEY
+
+        if not request.session.get(SESSION_USER_KEY):
+            from fastapi.responses import RedirectResponse
+
+            return RedirectResponse(url="/login?next=/review", status_code=302)
         from fastapi.responses import FileResponse
         from pathlib import Path
 
         return FileResponse(Path(__file__).parent / "static" / "review.html")
+
+    @app.get("/login", include_in_schema=False)
+    async def login_page():
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+
+        return FileResponse(Path(__file__).parent / "static" / "login.html")
 
     app.include_router(email_router)
     if settings.settings_api_enabled:

@@ -47,3 +47,4 @@ testcontainers[postgres]>=4.8.0,<5.0.0
 
 # Email MX verification (optional at runtime, required by verifier tests)
 dnspython>=2.6.0,<3.0.0
+itsdangerous>=2.0

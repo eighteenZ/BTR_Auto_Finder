@@ -12,8 +12,8 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
+from api.app_common import _install_common
 from api.automation_routes import router as automation_router
 from api.email_routes import (
     router as email_router,
@@ -686,13 +686,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    _install_common(app, settings)
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(automation_router)

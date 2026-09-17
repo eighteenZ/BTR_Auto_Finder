@@ -1,47 +1,31 @@
-"""Shared API access control helpers."""
+"""Shared API access control.
+
+The account system (api/auth.py, corporate-mailbox login) is the primary
+mechanism; ``require_api_access`` below is kept as the import-compatible name
+every router already depends on. Sessions and per-user API keys replace the
+single shared ``API_ACCESS_TOKEN``, which remains a break-glass admin
+credential while it is configured.
+
+Roles: ``require_user`` for operational endpoints, ``require_admin`` for the
+settings API and user management.
+"""
 
 from __future__ import annotations
 
-from fastapi import Header, HTTPException, Query, Request, status
+from fastapi import Request
 
-from config.settings import get_settings
-
-_LOCAL_HOSTS = {"", "127.0.0.1", "::1", "localhost", "testclient", "test"}
-
-
-def _extract_bearer_token(authorization: str | None) -> str:
-    if not authorization:
-        return ""
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer":
-        return ""
-    return token.strip()
+import api.auth as auth
+from api.auth import require_admin, require_user  # re-exported
 
 
-def require_api_access(
-    request: Request,
-    authorization: str | None = Header(default=None),
-    x_api_key: str | None = Header(default=None),
-    api_key: str | None = Query(default=None),
-) -> None:
-    """Allow localhost access by default; require token for non-local requests when configured."""
-    settings = get_settings()
-    expected = settings.api_access_token.strip()
-    client_host = (request.client.host if request.client else "").strip().lower()
+def require_api_access(request: Request) -> dict:
+    """Auth dependency used across routers (name kept for compatibility).
 
-    if not expected:
-        if client_host in _LOCAL_HOSTS:
-            return
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API access is restricted to localhost unless API_ACCESS_TOKEN is configured.",
-        )
+    Accepts a session cookie, a per-user API key, the legacy shared token
+    (admin), or a localhost caller. Returns the resolved principal; role
+    checks use :func:`require_admin`.
+    """
+    return auth.require_user(request)
 
-    provided = x_api_key or api_key or _extract_bearer_token(authorization)
-    if provided == expected:
-        return
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid API access token.",
-    )
+__all__ = ["require_api_access", "require_user", "require_admin", "auth"]

@@ -136,7 +136,7 @@ class TestUploadFiles:
 
         get_settings.cache_clear()
         app = create_app()
-        transport = ASGITransport(app=app)
+        transport = ASGITransport(app=app, client=("203.0.113.7", 44300))
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             unauthorized = await client.get("/api/v1/hunts")
             authorized = await client.get("/api/v1/hunts", headers={"X-API-Key": "secret-token"})

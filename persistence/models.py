@@ -333,3 +333,25 @@ class CampaignJob(Base):
         Index("idx_campaign_jobs_status", "status", "created_at"),
         Index("idx_campaign_jobs_hunt", "hunt_id"),
     )
+
+
+class User(Base):
+    """Login account backed by the corporate mailbox.
+
+    Passwords are never stored: authentication is an IMAP LOGIN against the
+    company mail server with the caller-supplied credentials. ``api_key`` is
+    a per-user programmatic credential replacing the shared API token.
+    """
+
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True)
+    email = Column(String, nullable=False, unique=True)
+    role = Column(String, nullable=False, server_default=text("'member'"))
+    api_key = Column(String, nullable=False, unique=True, server_default=text("''"))
+    auth_provider = Column(String, nullable=False, server_default=text("'imap'"))
+    active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(String, nullable=False)
+    last_login_at = Column(String, server_default=text("''"))
+
+    __table_args__ = (Index("idx_users_role", "role"),)
