@@ -99,7 +99,7 @@ vi .env
 | --- | --- |
 | `EMAIL_FROM_ADDRESS` / `EMAIL_SMTP_USERNAME` | 发信地址，两者相同 |
 | `EMAIL_SMTP_PASSWORD` | 服务商提供的 SMTP 密码（非邮箱登录密码） |
-| `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` | 例：阿里云 DirectMail 美区 `smtpdm-us-east-1.aliyuncs.com`。端口与 TLS 的组合：`465` + `EMAIL_USE_TLS=true`（隐式 SSL）或 `80` + `EMAIL_USE_TLS=true`（STARTTLS，本项目验收即用此组合并实发成功）。若见 `SSL: WRONG_VERSION_NUMBER`，说明在非 SSL 端口上做了隐式 SSL 握手——对照上表核对 80/465 与 TLS 开关的组合即可 |
+| `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` | 例：阿里云 DirectMail 美区 `smtpdm-us-east-1.aliyuncs.com`。端口与 TLS 的组合：`465` + `EMAIL_USE_TLS=true`（隐式 SSL）或 `80` + `EMAIL_USE_TLS=true`（STARTTLS——服务端 EHLO 广告 STARTTLS，实测升级 TLSv1.3 成功；程序两条发送路径均自动处理）。排错：`SSL: WRONG_VERSION_NUMBER` = 用**隐式 SSL** 连了明文/STARTTLS 端口（如以 SSL 方式连 80，或 openssl/邮件客户端按 SSL 模式测 80），不是端口不支持 TLS |
 | `EMAIL_REPLY_TO` | 接收客户回复的邮箱（DirectMail 只发不收） |
 | `EMAIL_AUTO_SEND_ENABLED` | **先保持 false**，SMTP 测试通过后再改为 true |
 
