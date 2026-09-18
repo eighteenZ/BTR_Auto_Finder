@@ -402,6 +402,26 @@
         }
       }
     },
+    "/api/v1/email-drafts/counts": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Count Email Drafts",
+        "description": "Status histogram for the review UI tab badges (no content, tiny payload).",
+        "operationId": "count_email_drafts_api_v1_email_drafts_counts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/email-drafts/{draft_id}/decision": {
       "post": {
         "tags": [

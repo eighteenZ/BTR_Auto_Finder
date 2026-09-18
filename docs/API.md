@@ -200,6 +200,7 @@ GET  :8100/api/v1/email-sequences/{sequence_id}
 | GET | `/api/v1/health` | 健康检查 |
 | GET | `/review` | 人工审批页（浏览器） |
 | GET | `/api/v1/email-drafts` | 草稿列表（`status=draft/approved/rejected`、`hunt_id=`） |
+| GET | `/api/v1/email-drafts/counts` | 状态计数（轻量，审批页徽标用） |
 | GET | `/api/v1/hunts/{hunt_id}/email-drafts` | 某任务的草稿 |
 | POST | `/api/v1/email-drafts/{id}/decision` | 审批/拒绝（批准即触发自动建 campaign） |
 | POST | `/api/v1/email-drafts/{id}/send` | 手动单发某一步（需先批准） |
