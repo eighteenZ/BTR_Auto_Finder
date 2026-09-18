@@ -10,6 +10,11 @@ review decisions are preserved.
 
 Usage:
     python scripts/repair_draft_placeholders.py [--dry-run] [--include-hunts]
+    python scripts/repair_draft_placeholders.py --resign-email [--dry-run]
+        Additionally replace the OLD sender address already rendered in
+        signature contact lines with EMAIL_SIGNATURE_EMAIL (falls back to
+        EMAIL_FROM_ADDRESS). Use after introducing/changing
+        EMAIL_SIGNATURE_EMAIL so existing drafts show the new contact.
 """
 
 from __future__ import annotations
@@ -26,6 +31,26 @@ from emailing.body_format import find_placeholders, is_known_placeholder
 from emailing.signature import recipient_display_name, sanitize_outreach_text
 from emailing.draft_store import now_iso
 from persistence.db import execute, fetch_all, get_session
+
+
+def _resign_emails(emails: list, old_email: str, new_email: str) -> tuple[list, int]:
+    """Swap an already-rendered sender address for the signature contact."""
+    if not old_email or not new_email or old_email == new_email:
+        return emails, 0
+    replaced = 0
+    out: list = []
+    for item in emails or []:
+        if isinstance(item, dict):
+            entry = dict(item)
+            for field in ("subject", "body_text"):
+                text = str(entry.get(field, "") or "")
+                if old_email in text:
+                    entry[field] = text.replace(old_email, new_email)
+                    replaced += 1
+            out.append(entry)
+        else:
+            out.append(item)
+    return out, replaced
 
 
 def _clean_emails(emails: list, target: dict, settings) -> tuple[list, list[str]]:
@@ -117,13 +142,35 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--include-hunts", action="store_true", help="同时清洗 hunts.data 内嵌的草稿副本")
+    parser.add_argument("--resign-email", action="store_true",
+                        help="把已渲染的旧发信地址替换为 EMAIL_SIGNATURE_EMAIL（回退 EMAIL_FROM_ADDRESS）")
     args = parser.parse_args()
 
     settings = get_settings()
+    signature_email = (settings.email_signature_email or settings.email_from_address or "").strip()
     print(f"发信人身份: name={settings.email_signature_name!r} title={settings.email_signature_title!r} "
-          f"phone={settings.email_signature_phone!r} email={settings.email_from_address!r}")
+          f"phone={settings.email_signature_phone!r} 联系邮箱={signature_email!r} "
+          f"(发信通道 {settings.email_from_address!r})")
 
     print("\n== email_drafts ==")
+    if args.resign_email:
+        with get_session() as session:
+            rows = fetch_all(session, "SELECT id, company_name, emails FROM email_drafts")
+        resigned = 0
+        for row in rows:
+            emails, n = _resign_emails(row.get("emails") or [], settings.email_from_address, signature_email)
+            if n:
+                resigned += 1
+                print(f"  draft {str(row['id'])[:8]} {str(row.get('company_name'))[:32]!r}: {n} 处联系邮箱 → {signature_email}")
+                if not args.dry_run:
+                    with get_session() as session:
+                        execute(
+                            session,
+                            "UPDATE email_drafts SET emails = CAST(? AS jsonb), updated_at = ? WHERE id = ?",
+                            (json.dumps(emails, ensure_ascii=False), now_iso(), row["id"]),
+                        )
+        print(f"{'[dry-run] ' if args.dry_run else ''}换签邮箱 {resigned} 条")
+        return 0
     repaired, total, unfillable = _repair_drafts(settings, dry_run=args.dry_run)
     print(f"{'[dry-run] ' if args.dry_run else ''}已清洗 {repaired}/{total} 条草稿")
 

@@ -170,6 +170,9 @@ class Settings(BaseSettings):
     email_signature_name: str = ""
     email_signature_title: str = ""
     email_signature_phone: str = ""
+    # Contact mailbox shown in the outreach signature. Falls back to
+    # email_from_address when unset; the SMTP envelope is unaffected either way.
+    email_signature_email: str = ""
     email_llm_model: str = ""
     email_reasoning_model: str = ""
     email_llm_requests_per_minute: int = 0

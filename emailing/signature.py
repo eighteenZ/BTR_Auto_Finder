@@ -15,23 +15,21 @@ from emailing.body_format import apply_sender_placeholders
 def signature_identity(settings: Any, account: dict[str, Any] | None = None) -> dict[str, str]:
     """Return the sender identity used to replace signature placeholders.
 
-    ``account`` (an email_accounts row) may override the settings-derived
-    values, matching how the scheduler sends through a specific account.
+    ``account`` (an email_accounts row) may override name/title/phone to match
+    the sending mailbox. The signature contact email is deliberately NOT taken
+    from the sending address: ``EMAIL_SIGNATURE_EMAIL`` (falling back to
+    ``EMAIL_FROM_ADDRESS``) owns it, so the visible reply-to-me address can
+    differ from the SMTP channel.
     """
     identity = {
         "sender_name": str(getattr(settings, "email_signature_name", "") or getattr(settings, "email_from_name", "") or "").strip(),
         "sender_title": str(getattr(settings, "email_signature_title", "") or "").strip(),
         "sender_phone": str(getattr(settings, "email_signature_phone", "") or "").strip(),
-        "sender_email": str(getattr(settings, "email_from_address", "") or "").strip(),
+        "sender_email": str(getattr(settings, "email_signature_email", "") or getattr(settings, "email_from_address", "") or "").strip(),
     }
     if account:
-        overrides = {
-            "sender_name": account.get("signature_name"),
-            "sender_title": account.get("signature_title"),
-            "sender_phone": account.get("signature_phone"),
-            "sender_email": account.get("from_email"),
-        }
-        for key, value in overrides.items():
+        for key in ("sender_name", "sender_title", "sender_phone"):
+            value = account.get(key.replace("sender_", "signature_"))
             if str(value or "").strip():
                 identity[key] = str(value).strip()
     return identity
