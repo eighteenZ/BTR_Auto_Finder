@@ -175,6 +175,12 @@ async def list_email_drafts(status: str = "", hunt_id: str = "", limit: int = 20
     return [_draft_public(d) for d in _draft_store().list_drafts(status=status, hunt_id=hunt_id, limit=limit)]
 
 
+@router.get("/email-drafts/counts", dependencies=[Depends(require_api_access)])
+async def count_email_drafts():
+    """Status histogram for the review UI tab badges (no content, tiny payload)."""
+    return _draft_store().count_drafts_by_status()
+
+
 def _ensure_campaign_job(hunt_id: str, *, campaign_name_prefix: str = "Auto campaign") -> str | None:
     """Guarantee a campaign job exists for this hunt (idempotent).
 

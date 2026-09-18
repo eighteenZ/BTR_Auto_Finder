@@ -7,6 +7,7 @@ scheme identical across both services.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -43,6 +44,8 @@ def _install_common(app: FastAPI, settings) -> None:
         same_site="lax",
         https_only=False,
     )
+    # Draft bodies are bulky JSON; gzip cuts the transpacific transfer ~5-10x.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,

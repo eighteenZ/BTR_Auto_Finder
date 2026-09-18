@@ -76,10 +76,43 @@ let current = "draft";
 
 const $ = (id) => document.getElementById(id);
 let currentEmail = "";
+let visibleDrafts = [];          // current tab's drafts (in-memory cache)
 
 function headers() {
   // Session cookie authenticates automatically; per-user API keys still work.
   return { "Content-Type": "application/json" };
+}
+
+// Re-render the whole list from in-memory data without touching the network,
+// keeping the viewport steady (no jump to top).
+function rerenderAll() {
+  const y = window.scrollY;
+  const list = $("list");
+  list.innerHTML = (visibleDrafts && visibleDrafts.length)
+    ? visibleDrafts.map(renderCard).join("")
+    : `<div class="empty">当前没有${STATUS.find((s) => s.key === current).label}的草稿</div>`;
+  bindCardHandlers();
+  window.scrollTo(0, y);
+}
+
+function refreshCard(d) {
+  visibleDrafts = visibleDrafts.map((x) => (x.id === d.id ? d : x));
+  const el = document.querySelector(`.card [data-id="${d.id}"]`)?.closest(".card")
+    || Array.from(document.querySelectorAll(".card")).find((c) => c.innerHTML.includes(`data-id="${d.id}"`));
+  if (el) {
+    const y = window.scrollY;
+    el.outerHTML = renderCard(d);
+    bindCardHandlers();
+    window.scrollTo(0, y);
+  } else {
+    rerenderAll();
+  }
+}
+
+async function refreshCounts() {
+  try {
+    renderTabs(await fetch("/api/v1/email-drafts/counts", { headers: headers() }).then((r) => r.json()));
+  } catch (_) { /* badges are cosmetic */ }
 }
 
 async function checkAuth() {
@@ -123,7 +156,7 @@ function renderTabs(counts) {
     `<button class="tab ${s.key === current ? "active" : ""}" data-status="${s.key}">${s.label}<span class="cnt">${counts[s.key] || 0}</span></button>`
   ).join("");
   document.querySelectorAll(".tab").forEach((b) =>
-    b.addEventListener("click", () => { current = b.dataset.status; load(); })
+    b.addEventListener("click", () => switchTab(b.dataset.status))
   );
 }
 
@@ -187,6 +220,19 @@ function renderCard(d) {
 
 const editState = { id: "", emails: [] };
 
+function startEdit(id) {
+  const draft = visibleDrafts.find((d) => d.id === id);
+  if (!draft) return;
+  editState.id = id;
+  editState.emails = (draft.emails || []).map((m) => ({ ...m }));   // local copy
+  rerenderAll();                                                     // flips this card into edit pad, no network
+}
+
+function cancelEdit() {
+  editState.id = "";
+  rerenderAll();
+}
+
 async function saveEdit(id, btn) {
   const card = btn.closest(".card");
   const emails = Array.from(card.querySelectorAll(".mail.editing")).map((el, i) => ({
@@ -203,9 +249,11 @@ async function saveEdit(id, btn) {
       body: JSON.stringify({ emails }),
     });
     if (!res.ok) throw new Error((await res.json()).detail || res.status);
+    const saved = (await res.json()).draft;
     editState.id = "";
+    refreshCard(saved);                        // single card, in place, no refetch
     toast("已保存，编辑后的内容将随批准进入 campaign");
-    await load();
+    refreshCounts();
   } catch (e) {
     toast("保存失败：" + esc(e.message || e));
     btn.disabled = false;
@@ -220,58 +268,72 @@ async function decide(id, decision, notes, btn) {
       body: JSON.stringify({ decision, notes }),
     });
     if (!res.ok) throw new Error((await res.json()).detail || res.status);
-    toast(decision === "approved" ? "已批准，campaign 将自动创建" : "已拒绝");
+    const body = await res.json();
+    const prev = visibleDrafts.find((d) => d.id === id) || {};
+    refreshCard({
+      ...prev,
+      status: decision,
+      auto_send_eligible: decision === "approved",
+      manual_review: body.manual_review || {},
+    });
     editState.id = "";
-    await load();
+    toast(decision === "approved" ? "已批准，campaign 将自动创建" : "已拒绝");
+    refreshCounts();
   } catch (e) {
     toast("操作失败：" + esc(e.message || e));
     btn.disabled = false;
   }
 }
 
-async function load() {
+function bindCardHandlers() {
+  document.querySelectorAll("button.approve, button.reject").forEach((b) => {
+    b.addEventListener("click", () => {
+      const decision = b.classList.contains("approve") ? "approved" : "rejected";
+      const notes = b.closest(".actions").querySelector(".notes").value.trim();
+      decide(b.dataset.id, decision, notes, b);
+    });
+  });
+  document.querySelectorAll("button.start-edit").forEach((b) => {
+    b.addEventListener("click", () => startEdit(b.dataset.id));
+  });
+  document.querySelectorAll("button.cancel-edit").forEach((b) => {
+    b.addEventListener("click", cancelEdit);
+  });
+  document.querySelectorAll("button.save-edit").forEach((b) => {
+    b.addEventListener("click", () => saveEdit(b.dataset.id, b));
+  });
+}
+
+async function fetchTab() {
   const list = $("list");
   list.innerHTML = `<div class="empty">加载中…</div>`;
   const me = await checkAuth();
   if (!me) return;
   try {
-    const [cur, all] = await Promise.all([
-      fetch(`/api/v1/email-drafts?status=${current}&limit=200`, { headers: headers() }).then((r) => r.json()),
-      fetch(`/api/v1/email-drafts?limit=500`, { headers: headers() }).then((r) => r.json()),
+    const [cur, counts] = await Promise.all([
+      fetch(`/api/v1/email-drafts?status=${current}&limit=200`, { headers: headers() }).then((r) => {
+        if (r.status === 401 || r.status === 403) throw new Error("unauthorized");
+        return r.json();
+      }),
+      fetch("/api/v1/email-drafts/counts", { headers: headers() }).then((r) => r.json()).catch(() => ({})),
     ]);
-    const counts = {};
-    (all || []).forEach((d) => { counts[d.status] = (counts[d.status] || 0) + 1; });
-    renderTabs(counts);
-    list.innerHTML = (cur && cur.length)
-      ? cur.map(renderCard).join("")
-      : `<div class="empty">当前没有${STATUS.find((s) => s.key === current).label}的草稿</div>`;
-    document.querySelectorAll("button.approve, button.reject").forEach((b) => {
-      b.addEventListener("click", () => {
-        const decision = b.classList.contains("approve") ? "approved" : "rejected";
-        const notes = b.closest(".actions").querySelector(".notes").value.trim();
-        decide(b.dataset.id, decision, notes, b);
-      });
-    });
-    document.querySelectorAll("button.start-edit").forEach((b) => {
-      b.addEventListener("click", () => {
-        const draft = (cur || []).find((d) => d.id === b.dataset.id);
-        editState.id = b.dataset.id;
-        editState.emails = (draft && draft.emails) || [];
-        load();   // re-render flips this card into its edit pad
-      });
-    });
-    document.querySelectorAll("button.cancel-edit").forEach((b) => {
-      b.addEventListener("click", () => { editState.id = ""; load(); });
-    });
-    document.querySelectorAll("button.save-edit").forEach((b) => {
-      b.addEventListener("click", () => saveEdit(b.dataset.id, b));
-    });
+    visibleDrafts = cur || [];
+    renderTabs(counts || {});
+    rerenderAll();
   } catch (e) {
+    if (String(e.message) === "unauthorized") { location.replace("/login?next=" + encodeURIComponent(location.pathname)); return; }
     list.innerHTML = `<div class="empty">加载失败：${esc(e.message || e)}<br>会话可能已过期，<a href="/login?next=/review">重新登录</a></div>`;
   }
 }
 
-load();
+function switchTab(status) {
+  current = status;
+  editState.id = "";
+  fetchTab();
+}
+
+fetchTab();
+
 </script>
 </body>
 </html>

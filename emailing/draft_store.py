@@ -198,6 +198,13 @@ class EmailDraftStore:
             )
         return int((row or {}).get("count", 0))
 
+    def count_drafts_by_status(self) -> dict[str, int]:
+        """Lightweight status histogram for the review UI tab badges."""
+        with get_session() as session:
+            rows = fetch_all(session, "SELECT status, COUNT(*) AS n FROM email_drafts GROUP BY status")
+        counts = {str(r["status"]): int(r["n"]) for r in rows}
+        return {key: counts.get(key, 0) for key in ("draft", "approved", "rejected")}
+
     # ── hunter-side ingestion ─────────────────────────────────────────────
 
     def _lead_id_for_key(self, lead_key: str) -> str:

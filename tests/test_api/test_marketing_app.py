@@ -421,3 +421,22 @@ class TestReviewPageEditUI:
         assert res.status_code == 200
         for marker in ("start-edit", "save-edit", "edit-subject", "edit-body", "edited_by_review"):
             assert marker in res.text
+
+
+class TestDraftCountsEndpoint:
+    def _fake_settings(self):
+        return TestCampaignJobApprovalDeferral._fake_settings(self)
+
+    def test_counts_shape_and_values(self, monkeypatch):
+        monkeypatch.setattr("api.email_routes.get_settings", lambda: self._fake_settings())
+        client = TestClient(create_marketing_app())
+        d1 = _seed_draft(hunt_id="hunt_c1", manual_review={})                  # draft
+        _seed_draft(hunt_id="hunt_c2", manual_review={"decision": "approved"}) # approved
+        d3 = _seed_draft(hunt_id="hunt_c3", manual_review={})
+        EmailDraftStore().set_decision(d3, decision="rejected")                # rejected
+
+        res = client.get("/api/v1/email-drafts/counts")
+        assert res.status_code == 200
+        counts = res.json()
+        assert set(counts.keys()) == {"draft", "approved", "rejected"}
+        assert counts == {"draft": 1, "approved": 1, "rejected": 1}
