@@ -2262,6 +2262,11 @@
             "title": "Email Signature Phone",
             "default": ""
           },
+          "email_signature_email": {
+            "type": "string",
+            "title": "Email Signature Email",
+            "default": ""
+          },
           "email_llm_requests_per_minute": {
             "type": "string",
             "title": "Email Llm Requests Per Minute",
