@@ -19,6 +19,59 @@ CREATE TABLE campaign_jobs (
 	PRIMARY KEY (id)
 );
 
+CREATE TABLE customs_import_records (
+	id VARCHAR NOT NULL, 
+	lead_id VARCHAR DEFAULT '', 
+	lead_key VARCHAR DEFAULT '', 
+	company_name VARCHAR DEFAULT '', 
+	domain VARCHAR DEFAULT '', 
+	consignee_name VARCHAR DEFAULT '', 
+	supplier_name VARCHAR DEFAULT '', 
+	country VARCHAR DEFAULT '', 
+	hs_code VARCHAR DEFAULT '', 
+	product_description TEXT DEFAULT '', 
+	arrival_date VARCHAR DEFAULT '', 
+	quantity VARCHAR DEFAULT '', 
+	weight VARCHAR DEFAULT '', 
+	source VARCHAR DEFAULT 'importyeti_csv' NOT NULL, 
+	source_ref VARCHAR DEFAULT '', 
+	record_hash VARCHAR NOT NULL, 
+	raw JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	created_at VARCHAR DEFAULT '', 
+	PRIMARY KEY (id), 
+	UNIQUE (record_hash)
+);
+
+CREATE TABLE customs_sync_runs (
+	id VARCHAR NOT NULL, 
+	run_date VARCHAR NOT NULL, 
+	trigger VARCHAR DEFAULT 'scheduled' NOT NULL, 
+	status VARCHAR DEFAULT 'running' NOT NULL, 
+	files_processed INTEGER DEFAULT 0 NOT NULL, 
+	records_ingested INTEGER DEFAULT 0 NOT NULL, 
+	leads_checked INTEGER DEFAULT 0 NOT NULL, 
+	leads_active INTEGER DEFAULT 0 NOT NULL, 
+	new_leads INTEGER DEFAULT 0 NOT NULL, 
+	stats JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	error TEXT DEFAULT '', 
+	started_at VARCHAR DEFAULT '', 
+	finished_at VARCHAR DEFAULT '', 
+	PRIMARY KEY (id)
+);
+
+CREATE TABLE customs_watchlist (
+	id VARCHAR NOT NULL, 
+	hs_code VARCHAR NOT NULL, 
+	product_keywords JSONB DEFAULT '[]'::jsonb NOT NULL, 
+	countries JSONB DEFAULT '[]'::jsonb NOT NULL, 
+	note VARCHAR DEFAULT '', 
+	enabled INTEGER DEFAULT 1 NOT NULL, 
+	created_at VARCHAR DEFAULT '', 
+	updated_at VARCHAR DEFAULT '', 
+	PRIMARY KEY (id), 
+	CONSTRAINT uq_customs_watch_hs UNIQUE (hs_code)
+);
+
 CREATE TABLE email_accounts (
 	id VARCHAR NOT NULL, 
 	provider_type VARCHAR NOT NULL, 
@@ -210,6 +263,10 @@ CREATE TABLE leads (
 	fit_score FLOAT DEFAULT 0 NOT NULL, 
 	contactability_score FLOAT DEFAULT 0 NOT NULL, 
 	priority_tier VARCHAR DEFAULT '', 
+	procurement_status VARCHAR DEFAULT 'unknown', 
+	last_import_at VARCHAR DEFAULT '', 
+	import_count_90d INTEGER DEFAULT 0 NOT NULL, 
+	customs_last_checked_at VARCHAR DEFAULT '', 
 	first_seen_at VARCHAR DEFAULT '', 
 	last_seen_at VARCHAR DEFAULT '', 
 	seen_count INTEGER DEFAULT 1 NOT NULL, 
