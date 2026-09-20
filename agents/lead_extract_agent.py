@@ -1301,6 +1301,44 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
             enriched += 1
         lead["decision_makers"] = decision_makers
 
+    # ── Email Finder pass: name + domain -> verified mailbox (1 search each) ──
+    # Named decision-makers still without an email after Domain Search get one
+    # targeted lookup each, sharing the same per-hunt budget.
+    for lead in leads:
+        if queries_left <= 0:
+            break
+        domain = str(lead.get("website", "") or "")
+        domain = domain.removeprefix("https://").removeprefix("http://").split("/")[0].strip()
+        if not domain or "." not in domain:
+            continue
+        decision_makers = lead.get("decision_makers") or []
+        known = {str(e).strip().lower() for e in (lead.get("emails") or [])}
+        pending = [dm for dm in decision_makers
+                   if isinstance(dm, dict)
+                   and not str(dm.get("email", "") or "").strip()
+                   and str(dm.get("name", "") or "").strip()]
+        for dm in pending:
+            if queries_left <= 0:
+                break
+            name_parts = dm["name"].strip().split(" ", 1)
+            first = name_parts[0]
+            last = name_parts[1] if len(name_parts) > 1 else first
+            queries_left -= 1
+            try:
+                found = await tool.find_email(domain, first, last)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[LeadExtract] Email Finder failed for %s: %s", dm["name"], exc)
+                continue
+            if not found or not str(found.get("email", "") or "").strip():
+                continue
+            email = str(found["email"]).strip().lower()
+            dm["email"] = email
+            if email not in known:
+                lead.setdefault("emails", []).append(email)
+                known.add(email)
+            enriched += 1
+            logger.debug("[LeadExtract] Email Finder filled %s for %s", email, dm["name"])
+
     if enriched:
         logger.info("[LeadExtract] Enrichment added %d decision-maker email(s) (%d provider queries)",
                     enriched, max_queries - queries_left)

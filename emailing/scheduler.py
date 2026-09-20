@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Awaitable
 
 from config.settings import get_settings
 from emailing.email_sender import send_email
 from emailing.store import EmailStore
+
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -22,6 +28,7 @@ async def run_scheduler_once(
 ) -> dict[str, int]:
     """Send pending email jobs that are ready."""
     current = now_iso or _now_iso()
+    settings = get_settings()
     jobs = store.list_pending_messages_ready(current)
     sent = 0
     failed = 0
@@ -42,7 +49,6 @@ async def run_scheduler_once(
             continue
         template_id = str(sequence.get("template_id", "") or "")
         if template_id:
-            settings = get_settings()
             template_summary = store.get_template_performance_for_campaign(
                 str(sequence.get("campaign_id", "")),
                 underperforming_min_assigned=int(getattr(settings, "email_template_underperforming_min_assigned", 10) or 10),
@@ -60,6 +66,33 @@ async def run_scheduler_once(
                     next_scheduled_at="",
                 )
                 skipped += 1
+                continue
+
+        # Presend gate (optional): verify the recipient with the enrichment
+        # provider right before sending. Undeliverable verdicts cancel the
+        # message instead of bouncing and burning the sending domain's
+        # reputation. Risky still sends (score-based judgement call).
+        if getattr(settings, "email_presend_verify_enabled", False):
+            from tools.contact_enrichment import ContactEnrichmentTool
+
+            verdict = await ContactEnrichmentTool().verify_email(
+                str(sequence.get("lead_email", "") or "")
+            )
+            if verdict.get("result") in {"undeliverable", "invalid"}:
+                store.cancel_future_pending_messages(str(sequence["id"]), updated_at=current)
+                store.update_sequence_status(
+                    str(sequence["id"]),
+                    status="failed",
+                    updated_at=current,
+                    stop_reason="verifier_undeliverable",
+                    next_scheduled_at="",
+                )
+                store.mark_message_failed(str(job["id"]), failure_reason="verifier_undeliverable", updated_at=current)
+                failed += 1
+                logger.warning(
+                    "[EmailScheduler] %s skipped: recipient %s is undeliverable (verifier)",
+                    job["id"][:8], sequence.get("lead_email"),
+                )
                 continue
 
         result = await sender(

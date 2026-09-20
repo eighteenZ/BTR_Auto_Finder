@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from unittest.mock import AsyncMock
 
 from emailing.scheduler import run_scheduler_once
 from emailing.store import EmailStore
@@ -204,3 +205,117 @@ async def test_scheduler_stops_underperforming_template_sequence(tmp_path: Path,
     message = store.get_message("msg_1")
     assert message is not None
     assert message["status"] == "cancelled"
+
+
+async def _seed_full_campaign(tmp_path: Path, *, seq_id="seq_g", msg_id="msg_g"):
+    """Seed account + active campaign + scheduled sequence with one message."""
+    db_path = Path(tmp_path) / "email.db"
+    store = EmailStore(str(db_path))
+    store.init_db()
+    store.upsert_account({
+        "id": "acct_1", "provider_type": "smtp", "from_name": "B2Binsights",
+        "from_email": "sales@example.com", "reply_to": "sales@example.com",
+        "smtp_host": "smtp.example.com", "smtp_port": 587,
+        "smtp_username": "sales@example.com", "smtp_secret_encrypted": "enc",
+        "imap_host": "", "imap_port": 993, "imap_username": "",
+        "imap_secret_encrypted": "", "use_tls": 1, "status": "active",
+        "daily_send_limit": 50, "hourly_send_limit": 10, "last_test_at": "",
+        "created_at": "2026-03-09T00:00:00Z", "updated_at": "2026-03-09T00:00:00Z",
+    })
+    store.create_campaign({
+        "id": "cmp_g", "hunt_id": "hunt_g", "email_account_id": "acct_1",
+        "name": "Gate test", "status": "active",
+        "language_mode": "auto_by_region", "default_language": "en",
+        "fallback_language": "en", "tone": "professional",
+        "step1_delay_days": 0, "step2_delay_days": 3, "step3_delay_days": 3,
+        "min_fit_score": 0.6, "min_contactability_score": 0.45,
+        "created_at": "2026-03-09T00:00:00Z", "updated_at": "2026-03-09T00:00:00Z",
+    })
+    store.create_sequence({
+        "id": seq_id, "campaign_id": "cmp_g", "hunt_id": "hunt_g",
+        "lead_key": "w:acme.com", "lead_email": "buyer@acme.com",
+        "lead_name": "Acme", "decision_maker_name": "Jane",
+        "decision_maker_title": "Purchasing Manager", "locale": "en",
+        "status": "scheduled", "current_step": 0, "stop_reason": "",
+        "replied_at": "", "last_sent_at": "",
+        "next_scheduled_at": "2026-03-09T00:00:00Z",
+        "created_at": "2026-03-09T00:00:00Z", "updated_at": "2026-03-09T00:00:00Z",
+    })
+    store.create_message({
+        "id": msg_id, "sequence_id": seq_id, "step_number": 1, "goal": "intro",
+        "locale": "en", "subject": "Hello", "body_text": "Body",
+        "status": "pending", "scheduled_at": "2026-03-09T00:00:00Z",
+        "sent_at": "", "provider_message_id": "", "thread_key": "",
+        "failure_reason": "", "created_at": "2026-03-09T00:00:00Z",
+        "updated_at": "2026-03-09T00:00:00Z",
+    })
+    return store
+
+
+@pytest.mark.asyncio
+async def test_presend_gate_cancels_undeliverable_recipient(tmp_path, monkeypatch):
+    store = await _seed_full_campaign(Path(tmp_path))
+    monkeypatch.setattr("emailing.scheduler.get_settings", lambda: type("S", (), {
+        "email_presend_verify_enabled": True,
+        "email_template_underperforming_min_assigned": 10,
+        "email_template_underperforming_min_reply_rate": 1.0,
+    })())
+    monkeypatch.setattr(
+        "tools.contact_enrichment.ContactEnrichmentTool.verify_email",
+        AsyncMock(return_value={"result": "undeliverable", "score": 0}))
+
+    result = await run_scheduler_once(store, now_iso="2026-03-09T01:00:00Z",
+                                      sender=AsyncMock())
+
+    assert result["failed"] == 1 and result["sent"] == 0
+    msg = store.get_message("msg_g")
+    assert msg["status"] == "failed"
+    assert msg["failure_reason"] == "verifier_undeliverable"
+    seq = store.get_sequence("seq_g")
+    assert seq["status"] == "failed" and seq["stop_reason"] == "verifier_undeliverable"
+
+
+@pytest.mark.asyncio
+async def test_presend_gate_allows_deliverable_recipient(tmp_path, monkeypatch):
+    store = await _seed_full_campaign(Path(tmp_path))
+    monkeypatch.setattr("emailing.scheduler.get_settings", lambda: type("S", (), {
+        "email_presend_verify_enabled": True,
+        "email_template_underperforming_min_assigned": 10,
+        "email_template_underperforming_min_reply_rate": 1.0,
+    })())
+    monkeypatch.setattr(
+        "tools.contact_enrichment.ContactEnrichmentTool.verify_email",
+        AsyncMock(return_value={"result": "deliverable", "score": 95}))
+
+    sent_flag = {}
+    async def fake_sender(*a, **kw):
+        sent_flag["ok"] = True
+        return {"ok": True, "provider_message_id": "<m>", "thread_key": "t"}
+
+    result = await run_scheduler_once(store, now_iso="2026-03-09T01:00:00Z",
+                                      sender=fake_sender)
+    assert result["sent"] == 1 and sent_flag.get("ok")
+    assert store.get_message("msg_g")["status"] == "sent"
+
+
+@pytest.mark.asyncio
+async def test_presend_gate_disabled_by_default(tmp_path, monkeypatch):
+    store = await _seed_full_campaign(Path(tmp_path))
+    monkeypatch.setattr("emailing.scheduler.get_settings", lambda: type("S", (), {
+        "email_presend_verify_enabled": False,
+        "email_template_underperforming_min_assigned": 10,
+        "email_template_underperforming_min_reply_rate": 1.0,
+    })())
+    verifier = AsyncMock(return_value={"result": "undeliverable", "score": 0})
+    monkeypatch.setattr(
+        "tools.contact_enrichment.ContactEnrichmentTool.verify_email", verifier)
+
+    sent_flag = {}
+    async def fake_sender(*a, **kw):
+        sent_flag["ok"] = True
+        return {"ok": True, "provider_message_id": "<m>", "thread_key": "t"}
+
+    result = await run_scheduler_once(store, now_iso="2026-03-09T01:00:00Z",
+                                      sender=fake_sender)
+    assert result["sent"] == 1
+    verifier.assert_not_awaited()

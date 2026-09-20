@@ -156,6 +156,9 @@ class Settings(BaseSettings):
     enrichment_api_key: str = ""
     enrichment_title_keywords: str = ""       # csv; empty -> built-in defaults
     enrichment_max_queries_per_hunt: int = 50
+    # Verify each outbound recipient with the provider right before sending.
+    # Non-deliverable verdicts cancel that message instead of bouncing.
+    email_presend_verify_enabled: bool = False
     email_sequence_enabled: bool = False
     email_auto_send_enabled: bool = False
     email_step1_delay_days: int = 0

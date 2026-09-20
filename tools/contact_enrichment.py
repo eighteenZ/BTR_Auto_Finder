@@ -19,6 +19,8 @@ from config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 _HUNTER_DOMAIN_SEARCH_URL = "https://api.hunter.io/v2/domain-search"
+_HUNTER_EMAIL_FINDER_URL = "https://api.hunter.io/v2/email-finder"
+_HUNTER_EMAIL_VERIFIER_URL = "https://api.hunter.io/v2/email-verifier"
 _REQUEST_TIMEOUT_SECONDS = 15.0
 _EMPTY_RESULT_RETRY_DELAY_SECONDS = 8.0
 
@@ -74,7 +76,7 @@ class ContactEnrichmentTool:
             logger.warning("[Enrichment] Hunter query failed for %s: %s", domain, exc)
             return []
 
-        emails = (payload or {}).get("data", {}).get("emails", []) or []
+        emails = (payload or {}).get("emails", []) or []
         if not emails:
             # Hunter soft-throttles rapid repeated queries with 200 + empty
             # data; one spaced retry recovers the real result.
@@ -83,7 +85,7 @@ class ContactEnrichmentTool:
                 payload = await self._hunter_domain_search(domain)
             except Exception:  # noqa: BLE001
                 return []
-            emails = (payload or {}).get("data", {}).get("emails", []) or []
+            emails = (payload or {}).get("emails", []) or []
 
         decision: list[dict[str, Any]] = []
         secondary: list[dict[str, Any]] = []
@@ -118,6 +120,65 @@ class ContactEnrichmentTool:
         logger.info("[Enrichment] %s: %d decision-maker(s) + %d other personal contact(s) "
                     "from %d known emails", domain, len(decision), len(secondary), len(emails))
         return result
+
+    async def find_email(self, domain: str, first_name: str, last_name: str) -> dict[str, Any] | None:
+        """Email Finder: name + domain -> verified personal mailbox (1 search).
+
+        Returns {email, first_name, last_name, position, confidence,
+        verification} or None when disabled/failed/not found.
+        """
+        if not self.enabled:
+            return None
+        first = str(first_name or "").strip()
+        last = str(last_name or "").strip()
+        domain = str(domain or "").strip().lower()
+        if not domain or not first or not last:
+            return None
+        params = {"domain": domain, "first_name": first, "last_name": last,
+                  "api_key": self.api_key}
+        try:
+            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+                response = await client.get(_HUNTER_EMAIL_FINDER_URL, params=params)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Enrichment] Email Finder request failed for %s: %s", domain, exc)
+            return None
+        if response.status_code != 200:
+            logger.warning("[Enrichment] Email Finder returned %s for %s %s",
+                           response.status_code, first, last)
+            return None
+        data = (response.json() or {}).get("data") or {}
+        email = str(data.get("email", "") or "").strip()
+        if not email:
+            return None
+        verification = data.get("verification") or {}
+        return {
+            "email": email,
+            "first_name": first,
+            "last_name": last,
+            "position": str(data.get("position", "") or ""),
+            "confidence": int(data.get("confidence", 0) or 0),
+            "verification_status": str(verification.get("status", "") or ""),
+            "source": "enrichment",
+        }
+
+    async def verify_email(self, email: str) -> dict[str, Any]:
+        """Deliverability verdict for one mailbox (1 verification)."""
+        email = str(email or "").strip()
+        try:
+            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+                response = await client.get(_HUNTER_EMAIL_VERIFIER_URL,
+                                            params={"email": email, "api_key": self.api_key})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Enrichment] Verifier request failed for %s: %s", email, exc)
+            return {"result": "unknown", "score": 0}
+        if response.status_code != 200:
+            logger.warning("[Enrichment] Verifier returned %s for %s", response.status_code, email)
+            return {"result": "unknown", "score": 0}
+        data = (response.json() or {}).get("data") or {}
+        return {
+            "result": str(data.get("result", "") or "unknown"),
+            "score": int(data.get("score", 0) or 0),
+        }
 
     async def _hunter_domain_search(self, domain: str) -> dict[str, Any]:
         # No "limit" param: it is plan-restricted and returns 400 on free accounts.
