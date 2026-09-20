@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 _PROVIDER_DOMAINS = {
     "importgenius": "importgenius.com",
+    "importyeti": "importyeti.com",
     "volza": "volza.com",
     "trademo": "trademo.com",
     "panjiva": "panjiva.com",
@@ -62,6 +63,7 @@ class CustomsEvidence:
     product_clues: list[str]
     fetch_method: str
     confidence: float
+    shipment_count: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +77,7 @@ class CustomsEvidence:
             "product_clues": self.product_clues,
             "fetch_method": self.fetch_method,
             "confidence": self.confidence,
+            "shipment_count": self.shipment_count,
         }
 
 
@@ -122,6 +125,7 @@ def build_customs_queries(
     product_keywords = [p.strip() for p in (product_keywords or []) if p and p.strip()]
     product_part = " ".join(product_keywords[:3])
     queries = [
+        f'site:importyeti.com "{company_name}"',
         f'site:importgenius.com/importers "{company_name}"',
         f'site:importgenius.com/importers "{company_name}" "See Full Importer History"',
         f'site:volza.com/company-profile "{company_name}"',
@@ -195,6 +199,27 @@ def _extract_hs_codes(text: str) -> list[str]:
     return out[:5]
 
 
+_SHIPMENT_COUNT_RE = re.compile(r"([\d][\d,]{1,9})\s*(?:total\s+)?shipments?", re.IGNORECASE)
+
+
+def _extract_shipment_count(text: str) -> int:
+    """Pull the largest "N shipments" figure (e.g. ImportYeti profile pages).
+
+    Bare year-shaped numbers (1900-2100) are ignored: "2024 shipments" in
+    running text is far more often a date than a count.
+    """
+    best = 0
+    for match in _SHIPMENT_COUNT_RE.finditer(text):
+        try:
+            value = int(match.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if 1900 <= value <= 2100:
+            continue
+        best = max(best, value)
+    return best
+
+
 def _extract_product_clues(text: str, product_keywords: list[str]) -> list[str]:
     lower = text.lower()
     clues: list[str] = []
@@ -237,6 +262,7 @@ def _extract_from_page(
     partners = _extract_partner_countries(text)
     hs_codes = _extract_hs_codes(text)
     product_clues = _extract_product_clues(text, product_keywords)
+    shipment_count = _extract_shipment_count(text)
 
     strong_dims = 0
     if period:
@@ -248,6 +274,8 @@ def _extract_from_page(
     if hs_codes:
         strong_dims += 1
     if product_clues:
+        strong_dims += 1
+    if shipment_count > 0:
         strong_dims += 1
     if strong_dims < 2:
         return None
@@ -264,6 +292,7 @@ def _extract_from_page(
         product_clues=product_clues,
         fetch_method=fetch_method,
         confidence=confidence,
+        shipment_count=shipment_count,
     )
 
 
@@ -300,6 +329,8 @@ def _summarize(evidence: list[CustomsEvidence]) -> str:
         return "No concrete customs data found"
     best = evidence[0]
     parts = []
+    if best.shipment_count > 0:
+        parts.append(f"{best.shipment_count} shipments")
     if best.period:
         parts.append(f"period {best.period}")
     if best.trade_direction != "unknown":

@@ -179,6 +179,29 @@ def render_discovery_batch_text(items: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def render_customs_daily_text(result: dict[str, Any]) -> str:
+    ingest = result.get("ingest", {}) or {}
+    recompute = result.get("recompute", {}) or {}
+    verify = result.get("verify", {}) or {}
+    lines = [
+        "AI Hunter 海关数据日报",
+        f"日期: {result.get('run_date', '-')}",
+        "导入:",
+        f"- 处理文件 {ingest.get('files_processed', 0)} | 新增提单记录 {ingest.get('records_ingested', 0)} | 重复跳过 {ingest.get('records_skipped', 0)}",
+        f"- 新增企业 {ingest.get('new_leads', 0)}",
+    ]
+    failed_files = ingest.get("failed_files") or []
+    if failed_files:
+        lines.append(f"- 解析失败文件: {', '.join(str(f) for f in failed_files[:5])}")
+    lines += [
+        "采购需求判定:",
+        f"- 重算企业 {recompute.get('leads_recomputed', 0)} | 采购活跃 {recompute.get('leads_active', 0)}",
+        "平台页核查:",
+        f"- 核查 {verify.get('leads_checked', 0)} | 确认进口商 {verify.get('importer_confirmed', 0)} | 查询失败 {verify.get('lookups_failed', 0)}",
+    ]
+    return "\n".join(lines)
+
+
 def render_send_batch_text(items: list[dict[str, Any]]) -> str:
     lines = [f"AI Hunter 邮件已发送 | 本批 {len(items)} 封"]
     for item in items[:10]:

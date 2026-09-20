@@ -17,12 +17,14 @@ from api.app import (
     _automation_consumer_loop,
     _automation_notify_loop,
     _automation_worker_id,
+    _customs_daily_loop,
     _embedded_consumer_enabled,
     _now_iso,
     _template_seed_prewarm_loop,
 )
 from api.app_common import _install_common
 from api.automation_routes import router as automation_router
+from api.customs_routes import router as customs_router
 from api.leads_routes import router as leads_router
 from api.export_routes import router as export_router
 from api.routes import router
@@ -57,11 +59,13 @@ async def hunter_lifespan(app: FastAPI):
     logger.info("[TemplateSeedWorker] background loop started")
     app.state.automation_consumer_task = asyncio.create_task(_automation_consumer_loop())
     logger.info("[AutomationConsumer] background loop started")
+    app.state.customs_daily_task = asyncio.create_task(_customs_daily_loop())
+    logger.info("[CustomsDaily] background loop started")
     update_worker_state("consumer", enabled=_embedded_consumer_enabled(settings), running=True, worker_id=_automation_worker_id())
 
     yield
 
-    for name in ("automation_notify_task", "template_seed_task", "automation_consumer_task"):
+    for name in ("automation_notify_task", "template_seed_task", "automation_consumer_task", "customs_daily_task"):
         task = getattr(app.state, name, None)
         if task:
             task.cancel()
@@ -86,6 +90,7 @@ def create_hunter_app() -> FastAPI:
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(automation_router)
+    app.include_router(customs_router)
     app.include_router(leads_router)
     app.include_router(export_router)
     app.include_router(sse_router, prefix="/api/v1")

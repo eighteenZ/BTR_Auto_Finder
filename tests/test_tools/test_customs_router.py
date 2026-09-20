@@ -1,6 +1,10 @@
 import pytest
 
-from tools.customs_router import build_customs_queries, find_customs_data
+from tools.customs_router import (
+    _extract_shipment_count,
+    build_customs_queries,
+    find_customs_data,
+)
 
 
 class DummyGoogle:
@@ -27,8 +31,15 @@ def test_build_customs_queries_includes_provider_and_context():
         product_keywords=["micro switch", "rotary switch"],
     )
     assert any("site:importgenius.com/importers" in q for q in queries)
+    assert any("site:importyeti.com" in q for q in queries)
     assert any('"Acme GmbH" "acme.de" import export' == q for q in queries)
     assert any("micro switch rotary switch" in q for q in queries)
+
+
+def test_extract_shipment_count_picks_largest_and_ignores_noise():
+    text = "3 shipments to the U.S. 1,284 total shipments since 2015. 2024 shipments record."
+    assert _extract_shipment_count(text) == 1284
+    assert _extract_shipment_count("no numbers here") == 0
 
 
 @pytest.mark.asyncio

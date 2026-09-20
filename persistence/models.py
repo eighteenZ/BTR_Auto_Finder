@@ -70,6 +70,10 @@ class Lead(Base):
     fit_score = Column(Float, nullable=False, server_default=text("0"))
     contactability_score = Column(Float, nullable=False, server_default=text("0"))
     priority_tier = Column(String, server_default=text("''"))
+    procurement_status = Column(String, server_default=text("'unknown'"))
+    last_import_at = Column(String, server_default=text("''"))
+    import_count_90d = Column(Integer, nullable=False, server_default=text("0"))
+    customs_last_checked_at = Column(String, server_default=text("''"))
     first_seen_at = Column(String, server_default=text("''"))
     last_seen_at = Column(String, server_default=text("''"))
     seen_count = Column(Integer, nullable=False, server_default=text("1"))
@@ -109,6 +113,84 @@ class HuntLead(Base):
     added_at = Column(String, server_default=text("''"))
 
     __table_args__ = (Index("idx_hunt_leads_hunt", "hunt_id"),)
+
+
+# ── Customs data pipeline (ImportYeti-first) ─────────────────────────────────
+
+
+class CustomsImportRecord(Base):
+    """One normalized shipment / bill-of-lading record ingested from a customs
+    data source (ImportYeti CSV export today, provider pages and APIs later).
+
+    ``record_hash`` deduplicates re-imported files; ``lead_id`` is a loose
+    reference (no FK) so records survive lead deletion.
+    """
+
+    __tablename__ = "customs_import_records"
+
+    id = Column(String, primary_key=True)
+    lead_id = Column(String, server_default=text("''"))
+    lead_key = Column(String, server_default=text("''"))
+    company_name = Column(String, server_default=text("''"))
+    domain = Column(String, server_default=text("''"))
+    consignee_name = Column(String, server_default=text("''"))
+    supplier_name = Column(String, server_default=text("''"))
+    country = Column(String, server_default=text("''"))
+    hs_code = Column(String, server_default=text("''"))
+    product_description = Column(Text, server_default=text("''"))
+    arrival_date = Column(String, server_default=text("''"))
+    quantity = Column(String, server_default=text("''"))
+    weight = Column(String, server_default=text("''"))
+    source = Column(String, nullable=False, server_default=text("'importyeti_csv'"))
+    source_ref = Column(String, server_default=text("''"))
+    record_hash = Column(String, nullable=False, unique=True)
+    raw = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at = Column(String, server_default=text("''"))
+
+    __table_args__ = (
+        Index("idx_customs_records_domain_date", "domain", "arrival_date"),
+        Index("idx_customs_records_lead", "lead_id"),
+        Index("idx_customs_records_company", "company_name"),
+    )
+
+
+class CustomsSyncRun(Base):
+    """One execution of the daily customs pipeline (idempotency + audit)."""
+
+    __tablename__ = "customs_sync_runs"
+
+    id = Column(String, primary_key=True)
+    run_date = Column(String, nullable=False)
+    trigger = Column(String, nullable=False, server_default=text("'scheduled'"))
+    status = Column(String, nullable=False, server_default=text("'running'"))
+    files_processed = Column(Integer, nullable=False, server_default=text("0"))
+    records_ingested = Column(Integer, nullable=False, server_default=text("0"))
+    leads_checked = Column(Integer, nullable=False, server_default=text("0"))
+    leads_active = Column(Integer, nullable=False, server_default=text("0"))
+    new_leads = Column(Integer, nullable=False, server_default=text("0"))
+    stats = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    error = Column(Text, server_default=text("''"))
+    started_at = Column(String, server_default=text("''"))
+    finished_at = Column(String, server_default=text("''"))
+
+    __table_args__ = (Index("idx_customs_runs_date", "run_date", "status"),)
+
+
+class CustomsWatchItem(Base):
+    """Watchlist entry driving discovery and exports: HS code + product keywords."""
+
+    __tablename__ = "customs_watchlist"
+
+    id = Column(String, primary_key=True)
+    hs_code = Column(String, nullable=False)
+    product_keywords = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    countries = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    note = Column(String, server_default=text("''"))
+    enabled = Column(Integer, nullable=False, server_default=text("1"))
+    created_at = Column(String, server_default=text("''"))
+    updated_at = Column(String, server_default=text("''"))
+
+    __table_args__ = (UniqueConstraint("hs_code", name="uq_customs_watch_hs"),)
 
 
 # ── Automation job queue ─────────────────────────────────────────────────────

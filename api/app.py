@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 from api.app_common import _install_common
 from api.automation_routes import router as automation_router
+from api.customs_routes import router as customs_router
 from api.email_routes import (
     router as email_router,
 )
@@ -36,6 +37,7 @@ from automation.job_queue import HuntJobQueue
 from automation.metrics import collect_automation_metrics, collect_automation_status
 from automation.notifier import (
     render_alert_text,
+    render_customs_daily_text,
     render_discovery_batch_text,
     render_hunt_completed_text,
     render_hunt_failed_text,
@@ -49,6 +51,12 @@ from automation.runtime import update_worker_state
 from config.settings import get_settings
 from emailing.store import EmailStore
 from api.marketing_app import campaign_jobs_loop, email_reply_loop, email_scheduler_loop
+from persistence import customs_repo
+from services.customs_daily_service import (
+    run_customs_pipeline,
+    run_time_reached,
+    today_local,
+)
 
 # Configure logging for the entire application
 logging.basicConfig(
@@ -599,6 +607,29 @@ async def _automation_notify_loop() -> None:
         await asyncio.sleep(60)
 
 
+async def _customs_daily_loop() -> None:
+    """Fire the customs pipeline once per local day at the configured time."""
+    logger.info("[CustomsDaily] background loop started")
+    while True:
+        try:
+            settings = get_settings()
+            if bool(settings.customs_daily_enabled) and not os.environ.get("PYTEST_CURRENT_TEST"):
+                now = datetime.now().astimezone()
+                if run_time_reached(settings.customs_daily_run_at_local, now):
+                    already = await asyncio.to_thread(
+                        customs_repo.completed_run_for_date, today_local().isoformat()
+                    )
+                    if not already:
+                        result = await run_customs_pipeline(trigger="scheduled")
+                        if not result.get("skipped"):
+                            await _notify_feishu_async(render_customs_daily_text(result))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("[CustomsDaily] loop failed")
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown hooks."""
@@ -631,6 +662,8 @@ async def lifespan(app: FastAPI):
     logger.info("[TemplateSeedWorker] background loop started")
     app.state.automation_consumer_task = asyncio.create_task(_automation_consumer_loop())
     logger.info("[AutomationConsumer] background loop started")
+    app.state.customs_daily_task = asyncio.create_task(_customs_daily_loop())
+    logger.info("[CustomsDaily] background loop started")
     update_worker_state("consumer", enabled=_embedded_consumer_enabled(settings), running=True, worker_id=_automation_worker_id())
 
     try:
@@ -672,6 +705,12 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await consumer_task
             logger.info("[AutomationConsumer] background loop stopped")
+        customs_task = getattr(app.state, "customs_daily_task", None)
+        if customs_task:
+            customs_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await customs_task
+            logger.info("[CustomsDaily] background loop stopped")
         update_worker_state("consumer", running=False, active_job_id="")
 
 
@@ -690,6 +729,7 @@ def create_app() -> FastAPI:
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(automation_router)
+    app.include_router(customs_router)
     app.include_router(email_router)
     app.include_router(leads_router)
     app.include_router(export_router)
