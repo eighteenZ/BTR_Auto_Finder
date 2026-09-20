@@ -18,14 +18,17 @@ KEEP_WORK="${1:-}"
 
 cd "$ROOT"
 
-if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
-  echo "✗ working tree has uncommitted changes — commit first" >&2
-  exit 1
-fi
+# NOTE: the working tree may legitimately contain parallel work-in-progress
+# (other agents/humans). The wheel is built from `git archive HEAD`, so WIP
+# stays out of the artifact; no clean-tree requirement any more.
 
-echo "── 1/5 build wheel"
-rm -rf "$WORK/dist"
-"$PY" -m pip wheel . --no-deps -w "$WORK/dist" -q
+echo "── 1/6 build wheel (from the committed tree)"
+rm -rf "$WORK/src" "$WORK/dist"
+mkdir -p "$WORK/src"
+# Build from the COMMITTED snapshot: parallel work-in-progress in the working
+# tree (other agents/humans) must never leak into a release artifact.
+git archive HEAD | tar -x -C "$WORK/src"
+"$PY" -m pip wheel "$WORK/src" --no-deps -w "$WORK/dist" -q
 WHEEL="$(ls "$WORK/dist"/ai_hunter-*.whl | head -1)"
 echo "  → $(basename "$WHEEL")"
 
@@ -86,7 +89,9 @@ print("  → schema.sql (from throwaway db)")
 EOF
 
 echo "── 4/6 assemble release tree"
-mkdir -p "$WORK/payload/docs" "$WORK/payload/deploy/systemd"
+mkdir -p "$WORK/payload/docs" "$WORK/payload/deploy/systemd" "$WORK/payload/scripts"
+# Ops scripts the server actually runs (account bootstrap + draft repair).
+cp "$ROOT/scripts/create_user.py" "$ROOT/scripts/repair_draft_placeholders.py" "$WORK/payload/scripts/"
 cp "$WHEEL" "$WORK/payload/"
 cp "$WORK/requirements.lock.txt" "$WORK/payload/"
 cp "$WORK/openapi-hunter.json" "$WORK/openapi-marketing.json" "$WORK/schema.sql" "$WORK/payload/"
