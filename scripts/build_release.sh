@@ -210,7 +210,7 @@ vi .env
 cd "$APP_DIR"
 PSQL_URL=$(grep '^DATABASE_URL=' .env | sed 's/^DATABASE_URL=//; s/+psycopg//')
 psql "$PSQL_URL" -f schema.sql
-psql "$PSQL_URL" -c '\dt'        # 应列出 12 张表
+psql "$PSQL_URL" -c '\dt'        # 应列出 16 张表
 ```
 
 > schema 只建表，不需要扩展或特殊权限；仅能在空库上执行一次。
