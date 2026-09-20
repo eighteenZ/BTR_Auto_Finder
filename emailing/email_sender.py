@@ -34,9 +34,9 @@ def _send_via_smtp_sync(
 
     from config.settings import get_settings
 
-    from emailing.signature import sanitize_outreach_text
+    from emailing.signature import sanitize_body_with_signature
 
-    resolved_body = sanitize_outreach_text(body_text, get_settings(), account=account)
+    resolved_body = sanitize_body_with_signature(body_text, get_settings(), account=account)
     msg.set_content(format_plaintext_email_body(resolved_body))
 
     host = str(account.get("smtp_host", "") or "").strip()

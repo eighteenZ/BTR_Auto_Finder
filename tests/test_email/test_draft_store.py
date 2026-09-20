@@ -313,10 +313,14 @@ class TestUpdateEmailsAndEditProtection:
         edited = [{"sequence_number": 1, "email_type": "company_intro",
                    "subject": "Human wording", "body_text": "Human body", "suggested_send_day": 1}]
         assert store.update_emails(draft_id, edited) is not None
+        # 编辑保存即补签名（update_emails 走同一 sanitize+ensure 边界）
+        stored_after_edit = store.get_draft(draft_id)
+        assert stored_after_edit["emails"][0]["body_text"].startswith("Human body")
+        assert stored_after_edit["emails"][0]["body_text"].count("Wendy") == 1
 
         # 获客侧重写同一 (hunt, index)：emails 被保护，人工版本保留
         store.upsert_draft(_draft_payload(hunt_id, company_name="Acme Regenerated"))
         after = store.get_draft(draft_id)
         assert after["emails"][0]["subject"] == "Human wording"
-        assert after["emails"][0]["body_text"] == "Human body"
+        assert after["emails"][0]["body_text"] == stored_after_edit["emails"][0]["body_text"]
         assert after["company_name"] == "Acme Regenerated"     # 非内容字段照常更新

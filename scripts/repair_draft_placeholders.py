@@ -11,6 +11,7 @@ review decisions are preserved.
 Usage:
     python scripts/repair_draft_placeholders.py [--dry-run] [--include-hunts]
     python scripts/repair_draft_placeholders.py --resign-email [--dry-run]
+    python scripts/repair_draft_placeholders.py --fix-signature [--dry-run] [--include-hunts]
         Additionally replace the OLD sender address already rendered in
         signature contact lines with EMAIL_SIGNATURE_EMAIL (falls back to
         EMAIL_FROM_ADDRESS). Use after introducing/changing
@@ -144,6 +145,8 @@ def main() -> int:
     parser.add_argument("--include-hunts", action="store_true", help="同时清洗 hunts.data 内嵌的草稿副本")
     parser.add_argument("--resign-email", action="store_true",
                         help="把已渲染的旧发信地址替换为 EMAIL_SIGNATURE_EMAIL（回退 EMAIL_FROM_ADDRESS）")
+    parser.add_argument("--fix-signature", action="store_true",
+                        help="对存量草稿补齐/纠正签名块：移除虚构落款、追加配置签名（幂等，保留审批状态）")
     args = parser.parse_args()
 
     settings = get_settings()
@@ -153,6 +156,40 @@ def main() -> int:
           f"(发信通道 {settings.email_from_address!r})")
 
     print("\n== email_drafts ==")
+    if args.fix_signature:
+        from emailing.signature import ensure_signature_block
+
+        with get_session() as session:
+            rows = fetch_all(session, "SELECT id, company_name, status, emails, target FROM email_drafts")
+        fixed = 0
+        for row in rows:
+            recipient = row.get("target") or {}
+            emails_changed = 0
+            cleaned: list = []
+            for item in row.get("emails") or []:
+                if not isinstance(item, dict):
+                    cleaned.append(item)
+                    continue
+                entry = dict(item)
+                body = str(entry.get("body_text", "") or "")
+                fixed_body = ensure_signature_block(sanitize_outreach_text(body, settings), settings)
+                if fixed_body != body:
+                    entry["body_text"] = fixed_body
+                    emails_changed += 1
+                cleaned.append(entry)
+            if emails_changed:
+                fixed += 1
+                print(f"  draft {str(row['id'])[:8]} {str(row.get('company_name'))[:32]!r} "
+                      f"(status={row.get('status')}): {emails_changed} 封正文签名已补齐/纠正")
+                if not args.dry_run:
+                    with get_session() as session:
+                        execute(
+                            session,
+                            "UPDATE email_drafts SET emails = CAST(? AS jsonb), updated_at = ? WHERE id = ?",
+                            (json.dumps(cleaned, ensure_ascii=False), now_iso(), row["id"]),
+                        )
+        print(f"{'[dry-run] ' if args.dry_run else ''}签名修复 {fixed}/{len(rows)} 条")
+        return 0
     if args.resign_email:
         with get_session() as session:
             rows = fetch_all(session, "SELECT id, company_name, emails FROM email_drafts")

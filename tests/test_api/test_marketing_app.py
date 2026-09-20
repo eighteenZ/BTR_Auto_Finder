@@ -105,7 +105,9 @@ class TestDraftManualSend:
         assert body["sent_to"] == "buyer@acme.com"
         assert body["sequence_number"] == 2
         assert sent["subject"] == "Hi2"
-        assert sent["body"] == "Body two"
+        # Send path guarantees the configured signature after the draft body.
+        assert sent["body"].startswith("Body two")
+        assert "Sales Manager" in sent["body"]
 
 
 class TestCampaignJobConsumer:

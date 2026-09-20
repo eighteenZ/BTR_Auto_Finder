@@ -7,7 +7,7 @@ from email.message import EmailMessage
 
 from config.settings import Settings
 from emailing.body_format import format_plaintext_email_body
-from emailing.signature import sanitize_outreach_text
+from emailing.signature import sanitize_body_with_signature
 
 
 def _ensure_smtp_config(settings: Settings) -> None:
@@ -75,7 +75,7 @@ def send_smtp_email(
         if settings.email_reply_to.strip():
             message["Reply-To"] = settings.email_reply_to
         message.set_content(
-            format_plaintext_email_body(sanitize_outreach_text(body_text, settings))
+            format_plaintext_email_body(sanitize_body_with_signature(body_text, settings))
         )
         client.send_message(message)
         return {

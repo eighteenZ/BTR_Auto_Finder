@@ -17,6 +17,7 @@ from typing import Any
 
 from config.settings import get_settings
 from emailing.body_format import (
+    _CLOSING_PATTERNS,
     find_placeholders,
     format_email_sequence_bodies,
     format_plaintext_email_body,
@@ -24,6 +25,7 @@ from emailing.body_format import (
 )
 from emailing.policy import choose_email_target, expand_email_targets
 from emailing.template_pipeline import compose_template_plan, extract_template_profile
+from emailing.signature import _find_closing_end
 from graph.state import HuntState
 from tools.llm_client import LLMTool
 from tools.llm_output import parse_json
@@ -278,7 +280,11 @@ Your task: write a 3-email outreach sequence for a potential buyer/distributor, 
    - 2-3 short body paragraphs
    - blank line
    - closing line
-7. Output ONLY the JSON object — no extra text."""
+7. End the body at the closing line. The system appends the sender signature
+   automatically — do NOT write any signature yourself: no sender name, no
+   job title, no company name, no phone number, no email address, no website,
+   and no placeholders like [Your Name] after the closing line.
+8. Output ONLY the JSON object — no extra text."""
 
 
 EMAIL_FEWSHOT_EXAMPLES = """
@@ -604,13 +610,78 @@ async def _personalize_template_sequence(
     return None
 
 
-def _rule_validate_emails_payload(emails_list: list[dict[str, Any]]) -> dict[str, Any]:
+_BARE_NAME_LINE = re.compile(r"[A-Z][a-z]+(?: [A-Z][a-z]+)*$")
+_PHONEISH = re.compile(r"\+?\d[\d\s\-()]{5,}")
+
+
+def _fabricated_signature_line(region_lines: list[str], configured_name: str) -> str | None:
+    """Return the first line that looks like an invented personal signature.
+
+    A team/company sign-off ("Ihr SolarTech-Team.") is a legitimate closing
+    formula; a bare person name ("Wendy"), a phone number or an email/URL in
+    the signature region indicates the model invented sender contact details.
+    """
+    for line in region_lines:
+        if _PHONEISH.search(line) or "@" in line or "http" in line.lower():
+            return line
+    for line in region_lines:
+        if _BARE_NAME_LINE.fullmatch(line) and line != configured_name:
+            return line
+    return None
+
+
+def _expected_signature(settings: Any) -> dict[str, str]:
+    """Configured sender identity for the signature review rule."""
+    from emailing.signature import _cfg_str
+
+    return {
+        "name": _cfg_str(settings, "email_signature_name").strip(),
+        "email": (_cfg_str(settings, "email_signature_email") or _cfg_str(settings, "email_from_address")).strip(),
+        "phone": _cfg_str(settings, "email_signature_phone").strip(),
+    }
+
+
+def _rule_validate_emails_payload(
+    emails_list: list[dict[str, Any]],
+    expected_signature: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     issues: list[str] = []
     suggestions: list[str] = []
 
     if len(emails_list) != 3:
         issues.append(f"Expected exactly 3 emails, got {len(emails_list)}")
-        suggestions.append("Generate all 3 emails: company_intro, product_showcase, partnership_proposal")
+        suggestions.append(f"Generate all 3 emails: company_intro, product_showcase, partnership_proposal")
+
+    # Signature check (only when an identity is configured): the body must end
+    # at the closing line — a missing signature will be auto-appended, but a
+    # fabricated one means the model invented sender identity and is blocking.
+    if expected_signature and any(str(v or "").strip() for v in expected_signature.values()):
+        configured_email = str(expected_signature.get("email", "") or "").strip().lower()
+        configured_name = str(expected_signature.get("name", "") or "").strip()
+        for i, em in enumerate(emails_list[:3]):
+            body = str(em.get("body_text", "") or "").rstrip()
+            close_end = _find_closing_end(body)  # includes trailing ","/"."
+            if close_end is None:
+                issues.append(f"Email {i + 1}: no closing line, signature cannot be placed")
+                continue
+            region_lines = [line.strip() for line in body[close_end:].split("\n") if line.strip()]
+            if not region_lines:
+                # Informational only: ensure_signature_block appends it deterministically.
+                suggestions.append(f"Email {i + 1}: no signature after the closing line (the system appends it)")
+                continue
+            region_text = "\n".join(region_lines).lower()
+            has_identity = (configured_email and configured_email in region_text) or (
+                configured_name and any(line == configured_name for line in region_lines)
+            )
+            if not has_identity and (fabricated := _fabricated_signature_line(region_lines, configured_name)):
+                issues.append(
+                    f"Email {i + 1}: fabricated signature after closing — found '{fabricated}' "
+                    f"instead of the configured identity"
+                )
+                suggestions.append(
+                    f"Email {i + 1}: do not invent sender name/title/contact details; "
+                    f"end the body at the closing line"
+                )
 
     expected = [("company_intro", 0), ("product_showcase", 3), ("partnership_proposal", 7)]
     previous_subject = ""
@@ -805,7 +876,11 @@ def _sanitize_sequence_placeholders(sequence: dict[str, Any], settings: Any) -> 
     back to needs_review and the removed tokens are recorded so a reviewer can
     check the sentence still reads correctly.
     """
-    from emailing.signature import recipient_display_name, sanitize_outreach_text
+    from emailing.signature import (
+        ensure_signature_block,
+        recipient_display_name,
+        sanitize_outreach_text,
+    )
 
     recipient = recipient_display_name(sequence.get("target") or {})
     changed = 0
@@ -820,6 +895,9 @@ def _sanitize_sequence_placeholders(sequence: dict[str, Any], settings: Any) -> 
             unknown.update(t for t in find_placeholders(original) if not is_known_placeholder(t))
         clean_subject = sanitize_outreach_text(subject, settings, recipient_name=recipient)
         clean_body = sanitize_outreach_text(body, settings, recipient_name=recipient)
+        # Deterministic signature: the stored draft IS the deliverable, so the
+        # configured sign-off replaces whatever the model invented (or omitted).
+        clean_body = ensure_signature_block(clean_body, settings)
         if clean_subject != subject or clean_body != body:
             email_item["subject"] = clean_subject
             email_item["body_text"] = clean_body
@@ -996,7 +1074,7 @@ async def _validate_and_revise_sequence(
         if not isinstance(emails_list, list) or not emails_list:
             return None, last_summary
 
-        rule_result = _rule_validate_emails_payload(emails_list)
+        rule_result = _rule_validate_emails_payload(emails_list, _expected_signature(get_settings()))
         locale_result = await _locale_validate_emails_payload(llm, locale, emails_list)
 
         issues = list(rule_result.get("issues", []))
@@ -1347,7 +1425,7 @@ def _build_email_tools(llm: LLMTool, locale: str) -> list[ToolDef]:
                 emails_list = []
         except Exception as e:
             return json.dumps({"passed": False, "issues": [f"Parse error: {e}"], "suggestions": []})
-        rule_result = _rule_validate_emails_payload(emails_list)
+        rule_result = _rule_validate_emails_payload(emails_list, _expected_signature(get_settings()))
         issues = list(rule_result["issues"])
         suggestions = list(rule_result["suggestions"])
 

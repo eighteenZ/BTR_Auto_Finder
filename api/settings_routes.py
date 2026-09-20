@@ -77,6 +77,7 @@ class SettingsPayload(BaseModel):
     email_signature_title: str = ""
     email_signature_phone: str = ""
     email_signature_email: str = ""
+    email_signature_company: str = ""
     email_llm_requests_per_minute: str = ""
     email_reasoning_requests_per_minute: str = ""
     email_min_fit_score_to_send: str = ""
@@ -210,6 +211,7 @@ async def save_settings(payload: SettingsPayload):
         "email_signature_title": "EMAIL_SIGNATURE_TITLE",
         "email_signature_phone": "EMAIL_SIGNATURE_PHONE",
         "email_signature_email": "EMAIL_SIGNATURE_EMAIL",
+        "email_signature_company": "EMAIL_SIGNATURE_COMPANY",
         "email_llm_requests_per_minute": "EMAIL_LLM_REQUESTS_PER_MINUTE",
         "email_reasoning_requests_per_minute": "EMAIL_REASONING_REQUESTS_PER_MINUTE",
         "email_min_fit_score_to_send": "EMAIL_MIN_FIT_SCORE_TO_SEND",

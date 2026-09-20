@@ -223,7 +223,7 @@ class EmailDraftStore:
         """
         from config.settings import get_settings
 
-        from emailing.signature import recipient_display_name, sanitize_outreach_text
+        from emailing.signature import recipient_display_name, sanitize_body_with_signature, sanitize_outreach_text
 
         settings = get_settings()
         recipient = recipient_display_name(target)
@@ -234,7 +234,8 @@ class EmailDraftStore:
                 continue
             entry = dict(item)
             entry["subject"] = sanitize_outreach_text(str(entry.get("subject", "") or ""), settings, recipient_name=recipient)
-            entry["body_text"] = sanitize_outreach_text(str(entry.get("body_text", "") or ""), settings, recipient_name=recipient)
+            # Body = final deliverable: sanitize AND guarantee the configured signature.
+            entry["body_text"] = sanitize_body_with_signature(str(entry.get("body_text", "") or ""), settings, recipient_name=recipient)
             cleaned.append(entry)
         return cleaned
 
