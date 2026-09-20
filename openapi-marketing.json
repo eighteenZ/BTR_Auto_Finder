@@ -1477,6 +1477,11 @@
             "title": "Email Signature Email",
             "default": ""
           },
+          "email_signature_company": {
+            "type": "string",
+            "title": "Email Signature Company",
+            "default": ""
+          },
           "email_llm_requests_per_minute": {
             "type": "string",
             "title": "Email Llm Requests Per Minute",
