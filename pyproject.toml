@@ -9,7 +9,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["api", "agents", "automation", "config", "emailing", "graph", "observability", "persistence", "prompts", "services", "tools"]
+packages = ["api", "agents", "automation", "config", "emailing", "graph", "observability", "persistence", "prompts", "services", "tools", "tools.customs_sources"]
 
 [tool.setuptools.package-data]
 api = ["static/*.html"]
