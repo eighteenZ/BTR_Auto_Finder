@@ -10,7 +10,8 @@ from email.message import EmailMessage
 from typing import Any
 from uuid import uuid4
 
-from emailing.body_format import apply_sender_placeholders, format_plaintext_email_body
+from emailing.body_format import format_plaintext_email_body
+from emailing.smtp_client import open_smtp_connection
 
 
 def _send_via_smtp_sync(
@@ -56,13 +57,11 @@ def _send_via_smtp_sync(
             "error_type": "auth_error",
         }
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP(host, port, timeout=20) as server:
-        server.ehlo()
-        if use_tls:
-            server.starttls(context=context)
-            server.ehlo()
-        server.login(username, password)
+    # Single authoritative transport (shared with the connection-test path):
+    # implicit SSL for 465, STARTTLS elsewhere, plaintext without TLS.
+    with open_smtp_connection(
+        host, port, username, password, use_tls=use_tls
+    ) as server:
         server.send_message(msg)
 
     return {
@@ -125,5 +124,15 @@ async def send_email(
     except smtplib.SMTPResponseException as exc:
         error_type = "temporary_failure" if 400 <= exc.smtp_code < 500 else "permanent_failure"
         return {"ok": False, "provider": provider, "provider_message_id": "", "thread_key": thread_key or subject, "sent_at": "", "error": str(exc), "error_type": error_type}
-    except (TimeoutError, OSError) as exc:
+    except ssl.SSLError as exc:
+        # e.g. WRONG_VERSION_NUMBER: implicit SSL spoken to a STARTTLS/plain
+        # port or vice versa — retrying unchanged fails identically.
+        return {"ok": False, "provider": provider, "provider_message_id": "", "thread_key": thread_key or subject, "sent_at": "", "error": f"TLS handshake failed: {exc}", "error_type": "tls_error"}
+    except smtplib.SMTPServerDisconnected as exc:
+        return {"ok": False, "provider": provider, "provider_message_id": "", "thread_key": thread_key or subject, "sent_at": "", "error": str(exc), "error_type": "connection_error"}
+    except TimeoutError as exc:
+        return {"ok": False, "provider": provider, "provider_message_id": "", "thread_key": thread_key or subject, "sent_at": "", "error": str(exc), "error_type": "timeout"}
+    except ConnectionError as exc:
+        return {"ok": False, "provider": provider, "provider_message_id": "", "thread_key": thread_key or subject, "sent_at": "", "error": str(exc), "error_type": "connection_error"}
+    except OSError as exc:
         return {"ok": False, "provider": provider, "provider_message_id": "", "thread_key": thread_key or subject, "sent_at": "", "error": str(exc), "error_type": "network_error"}

@@ -1,13 +1,22 @@
-"""SMTP helpers for connection checks and outbound email sends."""
+"""SMTP helpers for connection checks and outbound email sends.
+
+``open_smtp_connection`` is the single authoritative transport: both the
+settings-based helpers here and the scheduler's send path (email_sender.py)
+go through it, so the 465 implicit-SSL branch can never drift out of sync
+with the STARTTLS path again.
+"""
 
 from __future__ import annotations
 
 import smtplib
+import ssl
 from email.message import EmailMessage
 
 from config.settings import Settings
 from emailing.body_format import format_plaintext_email_body
 from emailing.signature import sanitize_body_with_signature
+
+SMTP_TIMEOUT_SECONDS = 20
 
 
 def _ensure_smtp_config(settings: Settings) -> None:
@@ -23,22 +32,46 @@ def _ensure_smtp_config(settings: Settings) -> None:
         raise ValueError(f"Missing SMTP settings: {', '.join(missing)}")
 
 
-def _connect(settings: Settings) -> smtplib.SMTP:
-    _ensure_smtp_config(settings)
-    host = settings.email_smtp_host
-    port = int(settings.email_smtp_port or 0)
+def open_smtp_connection(
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    *,
+    use_tls: bool = True,
+    timeout: int = SMTP_TIMEOUT_SECONDS,
+    ssl_context: ssl.SSLContext | None = None,
+) -> smtplib.SMTP:
+    """Open an authenticated SMTP connection using the right transport.
 
-    if settings.email_use_tls and port == 465:
-        client: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=20)
-    else:
-        client = smtplib.SMTP(host, port, timeout=20)
+    - ``use_tls`` and port 465 -> implicit SSL (SMTP_SSL), connected in TLS;
+    - ``use_tls`` on any other port -> plaintext connect then STARTTLS;
+    - ``use_tls`` false -> plaintext, no upgrade.
+    """
+    if use_tls and port == 465:
+        context = ssl_context or ssl.create_default_context()
+        client: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=timeout, context=context)
         client.ehlo()
-        if settings.email_use_tls:
-            client.starttls()
+    else:
+        client = smtplib.SMTP(host, port, timeout=timeout)
+        client.ehlo()
+        if use_tls:
+            client.starttls(context=ssl_context or ssl.create_default_context())
             client.ehlo()
 
-    client.login(settings.email_smtp_username, settings.email_smtp_password)
+    client.login(username, password)
     return client
+
+
+def _connect(settings: Settings) -> smtplib.SMTP:
+    _ensure_smtp_config(settings)
+    return open_smtp_connection(
+        settings.email_smtp_host,
+        int(settings.email_smtp_port or 0),
+        settings.email_smtp_username,
+        settings.email_smtp_password,
+        use_tls=settings.email_use_tls,
+    )
 
 
 def test_smtp_connection(settings: Settings) -> dict[str, str]:
