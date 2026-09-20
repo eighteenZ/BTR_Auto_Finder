@@ -17,12 +17,12 @@ def test_choose_verified_decision_maker_first():
 def test_choose_inferred_decision_maker_before_generic():
     lead = {
         "decision_makers": [
-            {"name": "John Doe", "title": "Sales Director", "email": "john.doe@acme.com (inferred)"},
+            {"name": "John Doe", "title": "Sales Director", "email": "j.smith@acme.com (inferred)"},
         ],
         "emails": ["info@acme.com"],
     }
     target = choose_email_target(lead)
-    assert target["target_email"] == "john.doe@acme.com"
+    assert target["target_email"] == "j.smith@acme.com"
     assert target["target_type"] == "decision_maker_inferred_from_pattern"
 
 

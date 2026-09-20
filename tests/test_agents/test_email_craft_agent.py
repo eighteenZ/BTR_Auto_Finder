@@ -1313,15 +1313,15 @@ class TestEmailCraftNode:
                 "company_name": "Lead A",
                 "country_code": "us",
                 "industry": "Industrial Supply",
-                "website": "https://a.example.com",
-                "emails": ["buyer@a.example.com"],
+                "website": "https://a.bypassa.com",
+                "emails": ["buyer@a.bypassa.com"],
             },
             {
                 "company_name": "Lead B",
                 "country_code": "us",
                 "industry": "Industrial Supply",
-                "website": "https://b.example.com",
-                "emails": ["buyer@b.example.com"],
+                "website": "https://b.bypassb.com",
+                "emails": ["buyer@b.bypassb.com"],
             },
         ]
         state = _base_state(leads=leads)
@@ -1380,14 +1380,14 @@ class TestEmailCraftNode:
                 "country_code": "us",
                 "industry": "Industrial Supply",
                 "website": "https://a.example.com",
-                "emails": ["buyer@a.example.com", "sales@a.example.com"],
+                "emails": ["buyer@a.bypassa.com", "sales@a.bypassa.com"],
             },
             {
                 "company_name": "Lead B",
                 "country_code": "us",
                 "industry": "Industrial Supply",
-                "website": "https://b.example.com",
-                "emails": ["buyer@b.example.com"],
+                "website": "https://b.bypassb.com",
+                "emails": ["buyer@b.bypassb.com"],
             },
         ]
         state = _base_state(leads=leads)
@@ -1428,7 +1428,7 @@ class TestEmailCraftNode:
         assert react_call_count["n"] == 2
         assert len(result["email_sequences"]) == 2
         assert result["email_sequences"][0]["template_id"] != result["email_sequences"][1]["template_id"]
-        assert {item["target_email"] for item in result["email_sequences"][0]["targets"]} >= {"buyer@a.example.com", "sales@a.example.com"}
+        assert {item["target_email"] for item in result["email_sequences"][0]["targets"]} >= {"buyer@a.bypassa.com", "sales@a.bypassa.com"}
 
     @pytest.mark.asyncio
     async def test_reused_template_can_be_personalized_per_lead(self):
@@ -1437,15 +1437,15 @@ class TestEmailCraftNode:
                 "company_name": "Lead A",
                 "country_code": "us",
                 "industry": "Industrial Supply",
-                "website": "https://a.example.com",
-                "emails": ["buyer@a.example.com"],
+                "website": "https://a.bypassa.com",
+                "emails": ["buyer@a.bypassa.com"],
             },
             {
                 "company_name": "Lead B",
                 "country_code": "us",
                 "industry": "Industrial Supply",
-                "website": "https://b.example.com",
-                "emails": ["buyer@b.example.com"],
+                "website": "https://b.bypassb.com",
+                "emails": ["buyer@b.bypassb.com"],
             },
         ]
         state = _base_state(leads=leads)
@@ -1583,15 +1583,15 @@ class TestEmailCraftNode:
                 "company_name": "Lead US",
                 "country_code": "us",
                 "industry": "Industrial Supply",
-                "website": "https://us.example.com",
-                "emails": ["buyer@us.example.com"],
+                "website": "https://us.groupa.com",
+                "emails": ["buyer@us.groupa.com"],
             },
             {
                 "company_name": "Lead DE",
                 "country_code": "de",
                 "industry": "Industrial Supply",
-                "website": "https://de.example.com",
-                "emails": ["buyer@de.example.com"],
+                "website": "https://de.groupb.com",
+                "emails": ["buyer@de.groupb.com"],
             },
         ]
         state = _base_state(leads=leads)

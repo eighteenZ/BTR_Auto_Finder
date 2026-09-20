@@ -151,6 +151,11 @@ class Settings(BaseSettings):
     email_imap_password: str = ""
     email_imap_last_test_at: str = ""
     email_use_tls: bool = True
+    # Decision-maker contact enrichment (data providers).
+    enrichment_provider: str = "hunter"
+    enrichment_api_key: str = ""
+    enrichment_title_keywords: str = ""       # csv; empty -> built-in defaults
+    enrichment_max_queries_per_hunt: int = 50
     email_sequence_enabled: bool = False
     email_auto_send_enabled: bool = False
     email_step1_delay_days: int = 0
@@ -252,6 +257,15 @@ class Settings(BaseSettings):
     automation_consumer_status_poll_seconds: int = 15
     automation_consumer_request_timeout_seconds: int = 60
     automation_consumer_auto_start_campaign: bool = True
+
+    # --- Customs data pipeline (ImportYeti-first) ---
+    customs_daily_enabled: bool = False        # master switch for the daily loop
+    customs_daily_run_at_local: str = "08:00"  # HH:MM local time trigger
+    customs_daily_max_lookups: int = 30        # cap provider-page lookups per run (Serper/Jina quota)
+    customs_check_batch_size: int = 10         # leads verified per daily batch
+    customs_active_months: int = 6             # imports within N months => procurement "active"
+    customs_min_shipments_90d: int = 2         # shipments in trailing 90d that count as real volume
+    customs_import_dir: str = _resolve_dir("data/customs_imports")  # watched folder for CSV drops
 
     # --- Hunt persistence ---
     hunts_dir: str = _resolve_dir("data/hunts")  # directory for JSON hunt files

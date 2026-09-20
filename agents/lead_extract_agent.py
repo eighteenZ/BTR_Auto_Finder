@@ -1198,16 +1198,33 @@ async def _scrape_and_extract(
 async def _verify_lead_emails(lead: dict, verifier: EmailVerifierTool) -> dict:
     """Verify emails in a lead dict via MX record check.
 
-    Removes undeliverable emails (domains with no MX records).
+    Placeholder/format-example addresses (jdoe@company.com from "our email
+    format is ..." page text) are dropped first — their domains have MX
+    records, so the MX check alone cannot catch them. If nothing sendable
+    remains the lead is kept with an empty emails list (never dropped).
     Module-level so it can be independently unit-tested.
     """
     emails = lead.get("emails", [])
     if not emails:
         return lead
+
+    from emailing.policy import is_sendable_email
+
+    sendable = [str(e) for e in emails if is_sendable_email(str(e))]
+    dropped_placeholders = len(emails) - len(sendable)
+    if dropped_placeholders > 0:
+        logger.debug(
+            "[LeadExtract] Removed %d placeholder email(s) from %s",
+            dropped_placeholders, lead.get("company_name", "?"),
+        )
+    if not sendable:
+        lead["emails"] = []
+        return lead
+
     try:
-        verification_results = await verifier.verify_batch(emails)
+        verification_results = await verifier.verify_batch(sendable)
         verified = [r["email"] for r in verification_results if r["is_deliverable"]]
-        removed = len(emails) - len(verified)
+        removed = len(sendable) - len(verified)
         if removed > 0:
             logger.debug(
                 "[LeadExtract] Removed %d undeliverable emails from %s",
@@ -1218,6 +1235,76 @@ async def _verify_lead_emails(lead: dict, verifier: EmailVerifierTool) -> dict:
         logger.debug("[LeadExtract] Email verification failed for %s: %s",
                      lead.get("company_name", "?"), e)
     return lead
+
+
+# ── Decision-maker enrichment (data providers) ───────────────────────────
+
+async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
+    """Fill missing decision-maker mailboxes from the enrichment provider.
+
+    Only leads whose decision_makers carry no email are queried, up to
+    ENRICHMENT_MAX_QUERIES_PER_HUNT domains per hunt (each domain = one
+    provider credit). Results merge into decision_makers (marked source=
+    enrichment) and dedupe into lead["emails"]. Best-effort: any failure
+    just leaves the leads as-is.
+    """
+    from tools.contact_enrichment import ContactEnrichmentTool
+
+    settings = get_settings()
+    max_queries = max(0, int(getattr(settings, "enrichment_max_queries_per_hunt", 50) or 0))
+    if max_queries == 0:
+        return leads
+
+    tool = ContactEnrichmentTool()
+    if not tool.enabled:
+        return leads
+
+    queries_left = max_queries
+    enriched = 0
+    for lead in leads:
+        if queries_left <= 0:
+            break
+        decision_makers = lead.get("decision_makers") or []
+        if any(str((dm or {}).get("email", "") or "").strip() for dm in decision_makers if isinstance(dm, dict)):
+            continue
+        known = {str(e).strip().lower() for e in (lead.get("emails") or [])}
+
+        domain = str(lead.get("website", "") or "")
+        domain = domain.removeprefix("https://").removeprefix("http://").split("/")[0].strip()
+        if not domain or "." not in domain:
+            continue
+
+        queries_left -= 1
+        try:
+            contacts = await tool.find_decision_makers(domain)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[LeadExtract] Enrichment failed for %s: %s", domain, exc)
+            continue
+        if not contacts:
+            continue
+
+        for contact in contacts:
+            email = str(contact.get("email", "") or "").strip().lower()
+            if not email or email in known:
+                continue
+            known.add(email)
+            name = " ".join(part for part in (contact.get("first_name", ""), contact.get("last_name", "")) if part).strip()
+            decision_makers.append({
+                "name": name,
+                "title": str(contact.get("position", "") or ""),
+                "email": email,
+                "linkedin": "",
+                "source_url": "",
+                "source": "enrichment",
+            })
+            lead.setdefault("emails", []).append(email)
+            enriched += 1
+        lead["decision_makers"] = decision_makers
+
+    if enriched:
+        logger.info("[LeadExtract] Enrichment added %d decision-maker email(s) (%d provider queries)",
+                    enriched, max_queries - queries_left)
+    return leads
 
 
 # ── Main node ────────────────────────────────────────────────────────────
@@ -1488,6 +1575,9 @@ async def lead_extract_node(
     new_leads = list(await asyncio.gather(
         *[_verify_lead_emails(lead, verifier) for lead in new_leads]
     ))
+
+    # ── Decision-maker enrichment (best-effort, budget-capped) ───────────
+    new_leads = await _enrich_decision_maker_emails(new_leads)
 
     logger.info("[LeadExtractAgent] Completed — %d new leads extracted (total: %d)",
                 len(new_leads), len(existing_leads) + len(new_leads))
