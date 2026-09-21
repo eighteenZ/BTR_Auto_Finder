@@ -7,7 +7,11 @@ goes out.
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from emailing.body_format import apply_sender_placeholders
 
@@ -156,6 +160,38 @@ def _find_closing_end(text: str) -> int | None:
     return best_end
 
 
+_GENERIC_SALUTATION_RE = re.compile(
+    r"^\s*dear\s+("
+    r"sirs?(?:\s*/\s*|\s+or\s+|\s*,\s*)?madams?(?:\s+or\s+sirs?)?"
+    r"|sirs?|madam|madame"
+    r")\s*[,.!]?\s*$",
+    re.I,
+)
+
+
+def fix_generic_salutation(body_text: str, company_name: str) -> str:
+    """Replace a generic salutation (Dear Sir/Madam) with a company-team one.
+
+    A lead without a contact name otherwise produces "Dear Sir/Madam" — the
+    strongest template-letter signal. Addressing the company itself reads far
+    more natural and is fully deterministic.
+    """
+    company = str(company_name or "").strip()
+    if not company:
+        return str(body_text or "")
+    replaced = 0
+    out_lines: list[str] = []
+    for line in str(body_text or "").split("\n"):
+        if _GENERIC_SALUTATION_RE.match(line):
+            out_lines.append(f"Dear {company} team,")
+            replaced += 1
+        else:
+            out_lines.append(line)
+    if replaced:
+        logger.debug("[Signature] generic salutation -> company team (%s)", company)
+    return "\n".join(out_lines)
+
+
 def _strip_trailing_signature(text: str, signature_lines: list[str]) -> tuple[str, int]:
     """Peel repeated copies of the configured block off the tail; return (text, count)."""
     block = "\n\n" + "\n".join(signature_lines)
@@ -203,10 +239,13 @@ def sanitize_body_with_signature(
     *,
     recipient_name: str = "",
     account: dict[str, Any] | None = None,
+    company_name: str = "",
 ) -> str:
     """One-stop body treatment for persisted drafts and the send path:
-    placeholder sanitation followed by the deterministic signature block."""
+    placeholder sanitation, generic-salutation fix, then the deterministic
+    signature block."""
     body = sanitize_outreach_text(
         body_text, settings, recipient_name=recipient_name, account=account
     )
+    body = fix_generic_salutation(body, company_name)
     return ensure_signature_block(body, settings, account)

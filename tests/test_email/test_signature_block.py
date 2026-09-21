@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from agents.email_craft_agent import _rule_validate_emails_payload, _expected_signature
+import pytest
+
 from emailing.signature import ensure_signature_block, sanitize_body_with_signature
 
 
@@ -147,3 +149,38 @@ class TestReviewSignatureRule:
         ] * 3)
 
         assert not any("signature" in i for i in result["issues"])
+
+
+class TestGenericSalutationFix:
+    def test_sir_madam_replaced_with_company_team(self):
+        from emailing.signature import fix_generic_salutation
+
+        body = "Dear Sir/Madam,\n\nBody about switches.\n\nBest regards,\nZion"
+        result = fix_generic_salutation(body, "Lucky & Blessed")
+
+        assert result.startswith("Dear Lucky & Blessed team,")
+        assert "Sir/Madam" not in result
+
+    @pytest.mark.parametrize("salutation", [
+        "Dear Sir or Madam,",
+        "Dear Sir,",
+        "Dear Madam,",
+        "Dear Sir / Madam,",
+    ])
+    def test_generic_salutation_variants(self, salutation):
+        from emailing.signature import fix_generic_salutation
+
+        result = fix_generic_salutation(f"{salutation}\n\nBody.", "Acme")
+        assert result.startswith("Dear Acme team,")
+
+    def test_named_salutation_untouched(self):
+        from emailing.signature import fix_generic_salutation
+
+        body = "Dear Ms. Grayson,\n\nBody."
+        assert fix_generic_salutation(body, "Acme") == body
+
+    def test_no_company_name_leaves_body_alone(self):
+        from emailing.signature import fix_generic_salutation
+
+        body = "Dear Sir/Madam,\n\nBody."
+        assert fix_generic_salutation(body, "") == body

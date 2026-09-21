@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.settings import get_settings
-from emailing.body_format import find_placeholders, is_known_placeholder
+from emailing.body_format import find_placeholders, fix_generic_salutation, is_known_placeholder
 from emailing.signature import recipient_display_name, sanitize_outreach_text
 from emailing.draft_store import now_iso
 from persistence.db import execute, fetch_all, get_session
@@ -54,7 +54,7 @@ def _resign_emails(emails: list, old_email: str, new_email: str) -> tuple[list, 
     return out, replaced
 
 
-def _clean_emails(emails: list, target: dict, settings) -> tuple[list, list[str]]:
+def _clean_emails(emails: list, target: dict, settings, company_name: str = "") -> tuple[list, list[str]]:
     """Return (cleaned emails, report of what was touched).
 
     Report entries are either the placeholder token that was filled in, or
@@ -74,6 +74,8 @@ def _clean_emails(emails: list, target: dict, settings) -> tuple[list, list[str]
             if not tokens:
                 continue
             entry[field] = sanitize_outreach_text(original, settings, recipient_name=recipient)
+            if field == "body_text":
+                entry[field] = fix_generic_salutation(entry[field], company_name)
             for token in tokens:
                 report.append(token if is_known_placeholder(token) else f"UNFILLABLE:{token}")
         cleaned.append(entry)
@@ -87,7 +89,10 @@ def _repair_drafts(settings, *, dry_run: bool) -> tuple[int, int, list[str]]:
     repaired = 0
     unfillable: list[str] = []
     for row in rows:
-        emails, report = _clean_emails(row.get("emails") or [], row.get("target") or {}, settings)
+        emails, report = _clean_emails(
+            row.get("emails") or [], row.get("target") or {}, settings,
+            company_name=str(row.get("company_name", "") or ""),
+        )
         if not report:
             continue
         removed = [t for t in report if t.startswith("UNFILLABLE:")]

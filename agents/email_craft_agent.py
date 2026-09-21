@@ -878,11 +878,13 @@ def _sanitize_sequence_placeholders(sequence: dict[str, Any], settings: Any) -> 
     """
     from emailing.signature import (
         ensure_signature_block,
+        fix_generic_salutation,
         recipient_display_name,
         sanitize_outreach_text,
     )
 
     recipient = recipient_display_name(sequence.get("target") or {})
+    company = str((sequence.get("lead") or {}).get("company_name", "") or "").strip()
     changed = 0
     unknown: set[str] = set()
 
@@ -895,8 +897,10 @@ def _sanitize_sequence_placeholders(sequence: dict[str, Any], settings: Any) -> 
             unknown.update(t for t in find_placeholders(original) if not is_known_placeholder(t))
         clean_subject = sanitize_outreach_text(subject, settings, recipient_name=recipient)
         clean_body = sanitize_outreach_text(body, settings, recipient_name=recipient)
-        # Deterministic signature: the stored draft IS the deliverable, so the
-        # configured sign-off replaces whatever the model invented (or omitted).
+        # Generic salutation + deterministic signature: the stored draft IS the
+        # deliverable, so the configured identity replaces whatever the model
+        # invented (or omitted).
+        clean_body = fix_generic_salutation(clean_body, company)
         clean_body = ensure_signature_block(clean_body, settings)
         if clean_subject != subject or clean_body != body:
             email_item["subject"] = clean_subject

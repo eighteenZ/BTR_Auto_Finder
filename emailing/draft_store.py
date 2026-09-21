@@ -62,7 +62,8 @@ class EmailDraftStore:
         payload = dict(payload)
         if payload.get("emails"):
             payload["emails"] = self._clean_emails(
-                list(payload.get("emails") or []), payload.get("target") or {}
+                list(payload.get("emails") or []), payload.get("target") or {},
+                company_name=str(payload.get("company_name", "") or ""),
             )
         key = (str(payload.get("hunt_id", "") or ""), payload.get("sequence_index"))
         # Capture reviewer-edited content BEFORE the upsert overwrites it.
@@ -177,7 +178,10 @@ class EmailDraftStore:
         current = self.get_draft(draft_id)
         if not current or str(current.get("status", "")) != "draft":
             return None
-        emails = self._clean_emails(list(emails or []), current.get("target") or {})
+        emails = self._clean_emails(
+            list(emails or []), current.get("target") or {},
+            company_name=str(current.get("company_name", "") or ""),
+        )
         with get_session() as session:
             execute(
                 session,
@@ -215,7 +219,7 @@ class EmailDraftStore:
         return str(row["id"]) if row else ""
 
     @staticmethod
-    def _clean_emails(emails: list[Any], target: Any) -> list[Any]:
+    def _clean_emails(emails: list[Any], target: Any, company_name: str = "") -> list[Any]:
         """Strip signature placeholders before a draft lands in the contract table.
 
         Defense in depth: the generator already sanitizes, but drafts can also
@@ -223,7 +227,11 @@ class EmailDraftStore:
         """
         from config.settings import get_settings
 
-        from emailing.signature import recipient_display_name, sanitize_body_with_signature, sanitize_outreach_text
+        from emailing.signature import (
+            recipient_display_name,
+            sanitize_body_with_signature,
+            sanitize_outreach_text,
+        )
 
         settings = get_settings()
         recipient = recipient_display_name(target)
@@ -234,8 +242,12 @@ class EmailDraftStore:
                 continue
             entry = dict(item)
             entry["subject"] = sanitize_outreach_text(str(entry.get("subject", "") or ""), settings, recipient_name=recipient)
-            # Body = final deliverable: sanitize AND guarantee the configured signature.
-            entry["body_text"] = sanitize_body_with_signature(str(entry.get("body_text", "") or ""), settings, recipient_name=recipient)
+            # Body = final deliverable: sanitize, fix generic salutation, and
+            # guarantee the configured signature.
+            entry["body_text"] = sanitize_body_with_signature(
+                str(entry.get("body_text", "") or ""), settings,
+                recipient_name=recipient, company_name=company_name,
+            )
             cleaned.append(entry)
         return cleaned
 
