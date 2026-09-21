@@ -129,14 +129,14 @@ POST :8100/api/v1/email-drafts/{draft_id}/decision
 业务方要表格时用这个端点（按单个获客任务导出）：
 
 ```bash
-GET :8000/api/v1/hunts/{hunt_id}/export?format=xlsx&view=brief   # 默认 brief
-GET :8000/api/v1/hunts/{hunt_id}/export?format=xlsx&view=full
+GET :8000/api/v1/hunts/{hunt_id}/export?format=xlsx&view=full    # 默认 full（全列）
+GET :8000/api/v1/hunts/{hunt_id}/export?format=xlsx&view=brief   # 精简业务列
 curl -OJ "http://<host>:8000/api/v1/hunts/<hunt_id>/export?view=full"   # -OJ 按响应文件名保存
 ```
 
 - 返回 xlsx 附件（`Content-Disposition: attachment`），并带 `X-Lead-Count` / `X-Export-View` 响应头
-- `view=brief`（9 列）：公司名称、官网、国家/地区、行业、联系人、邮箱、电话、优先级、匹配度
-- `view=full`（21 列）：brief 全部 + 联系人职务、全部决策人、地址、社交媒体、客户类型、可触达度、契合度、证据强度、来源关键词、首次发现、最近更新、复用线索
+- `view=full`（默认，31 列全量）：brief 全部 + 域名、业务类型、竞争风险、联系人职务、全部决策人、地址、社交媒体、客户类型、可触达度、契合度、海关数据评分、海关数据、证据强度、来源关键词、首次发现、最近更新、出现次数、线索ID、线索键、复用线索
+- `view=brief`（9 列精简）：公司名称、官网、国家/地区、行业、联系人、邮箱、电话、优先级、匹配度
 - `联系人` 优先取 `contact_person`，为空时回退到首位决策人；`全部决策人` 格式为 `姓名 (职务) <邮箱>`
 - 无线索时仍返回带表头的空表（不会报错）
 - 错误：`404` 任务不存在；`400` format 非 xlsx 或 view 取值非法

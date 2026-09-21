@@ -13,8 +13,12 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+
+_EXCEL_MAX_CELL_CHARS = 32000  # hard Excel limit is 32767
+_TRUNCATION_SUFFIX = "…[truncated]"
 
 from api.hunt_store import load_hunt
 from api.security import require_api_access
@@ -96,6 +100,9 @@ BRIEF_COLUMNS: list[Column] = [
 ]
 
 FULL_COLUMNS: list[Column] = BRIEF_COLUMNS + [
+    ("域名", lambda l: l.get("domain", "")),
+    ("业务类型", lambda l: _joined(l.get("business_types"))),
+    ("竞争风险", lambda l: l.get("competitor_risk", "")),
     ("联系人职务", lambda l: _first_decision_maker(l).get("title", "")),
     ("全部决策人", _all_decision_makers),
     ("地址", lambda l: l.get("address", "")),
@@ -103,10 +110,15 @@ FULL_COLUMNS: list[Column] = BRIEF_COLUMNS + [
     ("客户类型", lambda l: l.get("customer_role", "")),
     ("可触达度", lambda l: _score(l.get("contactability_score"))),
     ("契合度", lambda l: _score(l.get("fit_score"))),
+    ("海关数据评分", lambda l: _score(l.get("customs_score"))),
+    ("海关数据", lambda l: str(l.get("customs_data", "") or "")),
     ("证据强度", lambda l: l.get("evidence_strength", "")),
     ("来源关键词", lambda l: l.get("source_keyword", "")),
     ("首次发现", lambda l: l.get("first_seen_at", "")),
     ("最近更新", lambda l: l.get("last_seen_at", "")),
+    ("出现次数", lambda l: l.get("seen_count", "")),
+    ("线索ID", lambda l: l.get("lead_id", "")),
+    ("线索键", lambda l: l.get("lead_key", "")),
     ("复用线索", lambda l: "是" if l.get("reused") else "否"),
 ]
 
@@ -133,10 +145,21 @@ def build_workbook(leads: list[dict[str, Any]], columns: list[Column], *, sheet_
                 value = extractor(lead)
             except Exception:  # noqa: BLE001 - a bad row must not fail the export
                 value = ""
-            if isinstance(value, (dict, list)):
-                value = str(value)
-            elif value is None:
-                value = ""
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                pass                                   # keep numbers numeric
+            else:
+                if isinstance(value, (dict, list)):
+                    value = str(value)
+                elif value is None:
+                    value = ""
+                text = str(value)
+                if text:
+                    # Full-field exports carry free-form scraped data: strip
+                    # control characters Excel rejects and cap at the cell limit.
+                    text = ILLEGAL_CHARACTERS_RE.sub("", text)
+                    if len(text) > _EXCEL_MAX_CELL_CHARS:
+                        text = text[:_EXCEL_MAX_CELL_CHARS] + _TRUNCATION_SUFFIX
+                value = text
             sheet.cell(row=row_index, column=col_index, value=value)
 
     for col_index, (header, _) in enumerate(columns, start=1):
@@ -157,7 +180,7 @@ def build_workbook(leads: list[dict[str, Any]], columns: list[Column], *, sheet_
 async def export_hunt_leads(
     hunt_id: str,
     format: str = Query(default="xlsx", description="Export format; only xlsx is supported"),
-    view: str = Query(default="brief", description="brief | full"),
+    view: str = Query(default="full", description="full (all columns) | brief (business columns only)"),
 ):
     """Download one hunt's leads as an xlsx workbook (brief or full columns)."""
     if format.lower() != "xlsx":

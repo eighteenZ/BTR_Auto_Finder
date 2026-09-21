@@ -66,7 +66,7 @@ def _sheet(response):
 class TestExportHuntLeads:
     def test_brief_export_returns_xlsx_attachment(self, monkeypatch):
         client = _client(monkeypatch)
-        res = client.get("/api/v1/hunts/hunt-12345678/export")
+        res = client.get("/api/v1/hunts/hunt-12345678/export?view=brief")
 
         assert res.status_code == 200
         assert res.headers["content-type"].startswith(
@@ -120,6 +120,34 @@ class TestExportHuntLeads:
         assert res.status_code == 200
         assert res.headers["x-lead-count"] == "0"
         assert [c.value for c in _sheet(res)[1]][0] == "公司名称"
+
+    def test_default_view_is_full(self, monkeypatch):
+        client = _client(monkeypatch)
+        res = client.get("/api/v1/hunts/hunt-12345678/export")
+
+        assert res.status_code == 200
+        assert res.headers["x-export-view"] == "full"
+        sheet = _sheet(res)
+        headers = [c.value for c in sheet[1]]
+        assert headers[:10] == [
+            "公司名称", "官网", "国家/地区", "行业", "联系人", "邮箱", "电话",
+            "优先级", "匹配度", "域名",
+        ]
+        # “全量”=全部字段：包含海关与证据等完整列
+        for expected in ("海关数据评分", "海关数据", "线索ID", "线索键"):
+            assert expected in headers
+
+    def test_oversized_cell_is_truncated_not_fatal(self, monkeypatch):
+        huge = dict(LEADS[0])
+        huge["customs_data"] = "X" * 60000
+        client = _client(monkeypatch, leads=[huge])
+
+        res = client.get("/api/v1/hunts/hunt-1/export?view=full")
+        assert res.status_code == 200
+        sheet = _sheet(res)
+        customs_col = [c.value for c in sheet[1]].index("海关数据")
+        cell = sheet.cell(row=2, column=customs_col + 1).value
+        assert len(cell) <= 32767 and cell.endswith("…[truncated]")
 
     def test_unknown_hunt_returns_404(self, monkeypatch):
         client = _client(monkeypatch, hunt_exists=False)
