@@ -61,8 +61,10 @@ def _resign_emails(emails: list, old_email: str, new_email: str) -> tuple[list, 
 def _clean_emails(emails: list, target: dict, settings, company_name: str = "") -> tuple[list, list[str]]:
     """Return (cleaned emails, report of what was touched).
 
-    Report entries are either the placeholder token that was filled in, or
-    ``UNFILLABLE:<token>`` for a token that had to be removed from the text.
+    Report entries: the placeholder token that was filled in,
+    ``UNFILLABLE:<token>`` for a token removed from the text, or
+    ``salutation:generic->company_team`` when a generic salutation was
+    rewritten (Dear Sir/Madam -> Dear {company} team).
     """
     recipient = recipient_display_name(target or {})
     cleaned: list = []
@@ -74,14 +76,19 @@ def _clean_emails(emails: list, target: dict, settings, company_name: str = "") 
         entry = dict(item)
         for field in ("subject", "body_text"):
             original = str(entry.get(field, "") or "")
+            updated = original
             tokens = find_placeholders(original)
-            if not tokens:
-                continue
-            entry[field] = sanitize_outreach_text(original, settings, recipient_name=recipient)
+            if tokens:
+                updated = sanitize_outreach_text(original, settings, recipient_name=recipient)
+                for token in tokens:
+                    report.append(token if is_known_placeholder(token) else f"UNFILLABLE:{token}")
             if field == "body_text":
-                entry[field] = fix_generic_salutation(entry[field], company_name)
-            for token in tokens:
-                report.append(token if is_known_placeholder(token) else f"UNFILLABLE:{token}")
+                fixed = fix_generic_salutation(updated, company_name)
+                if fixed != updated:
+                    updated = fixed
+                    report.append("salutation:generic->company_team")  # 让该行进入 repaired 统计
+            if updated != original:
+                entry[field] = updated
         cleaned.append(entry)
     return cleaned, report
 
@@ -131,7 +138,11 @@ def _repair_hunts(settings, *, dry_run: bool) -> int:
         for sequence in sequences:
             if not isinstance(sequence, dict):
                 continue
-            emails, report = _clean_emails(sequence.get("emails") or [], sequence.get("target") or {}, settings)
+            company = str((sequence.get("lead") or {}).get("company_name", "") or "")
+            emails, report = _clean_emails(
+                sequence.get("emails") or [], sequence.get("target") or {}, settings,
+                company_name=company,
+            )
             if report:
                 sequence["emails"] = emails
                 hunt_touched = True
@@ -181,7 +192,12 @@ def main() -> int:
                     continue
                 entry = dict(item)
                 body = str(entry.get("body_text", "") or "")
-                fixed_body = ensure_signature_block(sanitize_outreach_text(body, settings), settings)
+                company = str(row.get("company_name", "") or "")
+                fixed_body = ensure_signature_block(
+                    fix_generic_salutation(
+                        sanitize_outreach_text(body, settings), company),
+                    settings,
+                )
                 if fixed_body != body:
                     entry["body_text"] = fixed_body
                     emails_changed += 1
