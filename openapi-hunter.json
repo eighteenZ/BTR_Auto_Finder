@@ -1522,11 +1522,11 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "brief | full",
-              "default": "brief",
+              "description": "full (all columns) | brief (business columns only)",
+              "default": "full",
               "title": "View"
             },
-            "description": "brief | full"
+            "description": "full (all columns) | brief (business columns only)"
           }
         ],
         "responses": {
