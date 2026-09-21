@@ -28,8 +28,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.settings import get_settings
-from emailing.body_format import find_placeholders, fix_generic_salutation, is_known_placeholder
-from emailing.signature import recipient_display_name, sanitize_outreach_text
+from emailing.body_format import find_placeholders, is_known_placeholder
+from emailing.signature import (
+    fix_generic_salutation,
+    recipient_display_name,
+    sanitize_outreach_text,
+)
 from emailing.draft_store import now_iso
 from persistence.db import execute, fetch_all, get_session
 
