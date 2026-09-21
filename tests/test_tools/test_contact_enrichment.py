@@ -270,7 +270,8 @@ class TestEmailFinderPipeline:
 
     @pytest.mark.asyncio
     async def test_finder_budget_shared_with_domain_search(self, monkeypatch):
-        """Email Finder draws from the same per-hunt budget as Domain Search."""
+        """Budget of 1: the named lead consumes it on the Finder lookup, so the
+        anonymous Domain Search fallback is skipped (nothing left)."""
         import agents.lead_extract_agent as lea
 
         settings = self._settings()
@@ -291,5 +292,124 @@ class TestEmailFinderPipeline:
 
         await _enrich_decision_maker_emails(leads)
 
-        # Budget of 1 spent on Domain Search -> Finder gets nothing left.
+        # Budget of 1 spent on the Finder -> Domain Search gets nothing left.
+        finder.assert_awaited_once()
+
+
+class TestFinderFirstPriority:
+    """Email Finder (named contacts) runs before Domain Search (generic boxes)."""
+
+    def _settings(self, budget=50):
+        s = _FakeSettings()
+        s.enrichment_max_queries_per_hunt = budget
+        return s
+
+    @pytest.fixture
+    def patch_enrichment_settings(self, monkeypatch):
+        s = self._settings()
+        monkeypatch.setattr("agents.lead_extract_agent.get_settings", lambda: s)
+        monkeypatch.setattr("tools.contact_enrichment.get_settings", lambda: s)
+        return s
+
+    @pytest.mark.asyncio
+    async def test_named_dm_gets_finder_email_before_domain_search(
+            self, patch_enrichment_settings, monkeypatch):
+        leads = [{
+            "company_name": "Acme", "website": "https://acme.com", "emails": [],
+            "decision_makers": [{"name": "Jane Doe", "title": "Purchasing Manager",
+                                 "email": "", "linkedin": "", "source_url": ""}],
+        }]
+        finder = AsyncMock(return_value={
+            "email": "jane.doe@acme.com", "first_name": "Jane", "last_name": "Doe",
+            "position": "Purchasing Manager", "confidence": 97,
+            "verification_status": "valid", "source": "enrichment",
+        })
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_email", finder)
+        domain_search = AsyncMock(return_value=[])
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_decision_makers",
+            domain_search)
+
+        result = await _enrich_decision_maker_emails(leads)
+
+        dm = result[0]["decision_makers"][0]
+        assert dm["email"] == "jane.doe@acme.com"
+        assert "jane.doe@acme.com" in result[0]["emails"]
+        finder.assert_awaited_once()          # 已命中关键联系人，无需泛搜
+
+    @pytest.mark.asyncio
+    async def test_single_word_name_gets_no_finder_and_no_generic_blast(
+            self, patch_enrichment_settings, monkeypatch):
+        """Single-word names cannot drive Email Finder, and a named-DM company
+        never gets the generic-box Domain Search blast — the lead stays
+        emailless for manual handling."""
+        leads = [{
+            "company_name": "Cher Corp", "website": "https://cher.com", "emails": [],
+            "decision_makers": [{"name": "Cher", "title": "Owner",
+                                 "email": "", "linkedin": "", "source_url": ""}],
+        }]
+        finder = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_email", finder)
+        domain_search = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_decision_makers",
+            domain_search)
+
+        result = await _enrich_decision_maker_emails(leads)
+
         finder.assert_not_awaited()
+        domain_search.assert_not_awaited()
+        assert result[0]["decision_makers"][0]["email"] == ""
+
+    @pytest.mark.asyncio
+    async def test_named_dm_finder_miss_skips_generic_blast(self, patch_enrichment_settings, monkeypatch):
+        """Named DM exists but Hunter finds nothing: do NOT blast the company's
+        generic box instead — leave the DM emailless for manual handling."""
+        leads = [{
+            "company_name": "Acme", "website": "https://acme.com", "emails": [],
+            "decision_makers": [{"name": "Jane Doe", "title": "Purchasing Manager",
+                                 "email": "", "linkedin": "", "source_url": ""}],
+        }]
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_email",
+            AsyncMock(return_value=None))
+        domain_search = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_decision_makers",
+            domain_search)
+
+        result = await _enrich_decision_maker_emails(leads)
+
+        domain_search.assert_not_awaited()
+        assert result[0]["decision_makers"][0]["email"] == ""
+
+    @pytest.mark.asyncio
+    async def test_budget_shared_between_finder_and_domain_phases(
+            self, patch_enrichment_settings, monkeypatch):
+        patch_enrichment_settings.enrichment_max_queries_per_hunt = 1
+        finder = AsyncMock(return_value={
+            "email": "a@one.com", "first_name": "A", "last_name": "B",
+            "position": "Owner", "confidence": 90,
+            "verification_status": "valid", "source": "enrichment",
+        })
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_email", finder)
+        domain_search = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_decision_makers",
+            domain_search)
+
+        leads = [
+            {"company_name": "One", "website": "https://one.com", "emails": [],
+             "decision_makers": [{"name": "A B", "title": "Owner",
+                                  "email": "", "linkedin": "", "source_url": ""}]},
+            {"company_name": "Two", "website": "https://two.com", "emails": [],
+             "decision_makers": []},                       # anonymous -> would use Domain Search
+        ]
+
+        result = await _enrich_decision_maker_emails(leads)
+
+        domain_search.assert_not_awaited()                 # budget spent on phase 1
+        assert result[0]["decision_makers"][0]["email"] == "a@one.com"

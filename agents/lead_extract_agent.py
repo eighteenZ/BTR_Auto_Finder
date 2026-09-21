@@ -1242,11 +1242,17 @@ async def _verify_lead_emails(lead: dict, verifier: EmailVerifierTool) -> dict:
 async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
     """Fill missing decision-maker mailboxes from the enrichment provider.
 
-    Only leads whose decision_makers carry no email are queried, up to
-    ENRICHMENT_MAX_QUERIES_PER_HUNT domains per hunt (each domain = one
-    provider credit). Results merge into decision_makers (marked source=
-    enrichment) and dedupe into lead["emails"]. Best-effort: any failure
-    just leaves the leads as-is.
+    Credit priority goes to the most valuable lookups first:
+
+    1. Email Finder for every NAMED decision-maker without an email
+       (first + last name known): name + domain -> verified personal
+       mailbox, with Hunter's verification status attached.
+    2. Domain Search only for leads with NO named decision-makers at all
+       (anonymous companies) — generic company mailboxes as a last resort.
+
+    Both passes share ENRICHMENT_MAX_QUERIES_PER_HUNT. Merges go into
+    decision_makers (source=enrichment) and lead["emails"]; best-effort —
+    failures leave leads as-is.
     """
     from tools.contact_enrichment import ContactEnrichmentTool
 
@@ -1261,16 +1267,61 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
 
     queries_left = max_queries
     enriched = 0
+
+    def _domain_of(lead: dict) -> str:
+        domain = str(lead.get("website", "") or "")
+        return domain.removeprefix("https://").removeprefix("http://").split("/")[0].strip()
+
+    # ── Phase 1: Email Finder for named decision-makers ─────────────────
+    for lead in leads:
+        if queries_left <= 0:
+            break
+        domain = _domain_of(lead)
+        if not domain or "." not in domain:
+            continue
+        known = {str(e).strip().lower() for e in (lead.get("emails") or [])}
+        for dm in lead.get("decision_makers") or []:
+            if queries_left <= 0:
+                break
+            if not isinstance(dm, dict):
+                continue
+            if str(dm.get("email", "") or "").strip():
+                continue                                   # already has a mailbox
+            name = str(dm.get("name", "") or "").strip()
+            parts = name.split(" ", 1)
+            if len(parts) < 2:
+                continue                                   # Finder needs first + last
+            queries_left -= 1
+            try:
+                found = await tool.find_email(domain, parts[0], parts[1])
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[LeadExtract] Email Finder failed for %s: %s", name, exc)
+                continue
+            email = str((found or {}).get("email", "") or "").strip().lower()
+            if not email:
+                continue
+            dm["email"] = email
+            if email not in known:
+                lead.setdefault("emails", []).append(email)
+                known.add(email)
+            enriched += 1
+            logger.debug("[LeadExtract] Email Finder filled %s for %s", email, name)
+
+    # ── Phase 2: Domain Search fallback for anonymous companies ─────────
+    # Only leads where NO decision-maker has an email AND none is named:
+    # generic boxes are the last resort, never a replacement for a named
+    # contact Hunter could not find.
     for lead in leads:
         if queries_left <= 0:
             break
         decision_makers = lead.get("decision_makers") or []
         if any(str((dm or {}).get("email", "") or "").strip() for dm in decision_makers if isinstance(dm, dict)):
-            continue
-        known = {str(e).strip().lower() for e in (lead.get("emails") or [])}
+            continue                                       # finder already landed one
+        if any(isinstance(dm, dict) and str(dm.get("name", "") or "").strip()
+               for dm in decision_makers):
+            continue                                       # named DMs exist but were not found — no generic blast
 
-        domain = str(lead.get("website", "") or "")
-        domain = domain.removeprefix("https://").removeprefix("http://").split("/")[0].strip()
+        domain = _domain_of(lead)
         if not domain or "." not in domain:
             continue
 
@@ -1278,11 +1329,12 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
         try:
             contacts = await tool.find_decision_makers(domain)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("[LeadExtract] Enrichment failed for %s: %s", domain, exc)
+            logger.debug("[LeadExtract] Domain Search failed for %s: %s", domain, exc)
             continue
         if not contacts:
             continue
 
+        known = {str(e).strip().lower() for e in (lead.get("emails") or [])}
         for contact in contacts:
             email = str(contact.get("email", "") or "").strip().lower()
             if not email or email in known:
@@ -1300,44 +1352,6 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
             lead.setdefault("emails", []).append(email)
             enriched += 1
         lead["decision_makers"] = decision_makers
-
-    # ── Email Finder pass: name + domain -> verified mailbox (1 search each) ──
-    # Named decision-makers still without an email after Domain Search get one
-    # targeted lookup each, sharing the same per-hunt budget.
-    for lead in leads:
-        if queries_left <= 0:
-            break
-        domain = str(lead.get("website", "") or "")
-        domain = domain.removeprefix("https://").removeprefix("http://").split("/")[0].strip()
-        if not domain or "." not in domain:
-            continue
-        decision_makers = lead.get("decision_makers") or []
-        known = {str(e).strip().lower() for e in (lead.get("emails") or [])}
-        pending = [dm for dm in decision_makers
-                   if isinstance(dm, dict)
-                   and not str(dm.get("email", "") or "").strip()
-                   and str(dm.get("name", "") or "").strip()]
-        for dm in pending:
-            if queries_left <= 0:
-                break
-            name_parts = dm["name"].strip().split(" ", 1)
-            first = name_parts[0]
-            last = name_parts[1] if len(name_parts) > 1 else first
-            queries_left -= 1
-            try:
-                found = await tool.find_email(domain, first, last)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("[LeadExtract] Email Finder failed for %s: %s", dm["name"], exc)
-                continue
-            if not found or not str(found.get("email", "") or "").strip():
-                continue
-            email = str(found["email"]).strip().lower()
-            dm["email"] = email
-            if email not in known:
-                lead.setdefault("emails", []).append(email)
-                known.add(email)
-            enriched += 1
-            logger.debug("[LeadExtract] Email Finder filled %s for %s", email, dm["name"])
 
     if enriched:
         logger.info("[LeadExtract] Enrichment added %d decision-maker email(s) (%d provider queries)",
