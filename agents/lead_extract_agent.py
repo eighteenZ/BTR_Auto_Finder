@@ -1273,6 +1273,16 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
         return domain.removeprefix("https://").removeprefix("http://").split("/")[0].strip()
 
     # ── Phase 1: Email Finder for named decision-makers ─────────────────
+    # A generic box (sales@/info@) on a DM row does NOT count as "has a
+    # mailbox" — it is the company's phone-answerer, not the person. Named
+    # DMs with only a generic box get a personal-mailbox lookup anyway; the
+    # generic box stays in lead["emails"] as a lower-value fallback.
+    from emailing.policy import _GENERIC_LOCAL_PARTS
+
+    def _is_generic_mailbox(email: str) -> bool:
+        local = email.split("@", 1)[0]
+        return local in _GENERIC_LOCAL_PARTS
+
     for lead in leads:
         if queries_left <= 0:
             break
@@ -1285,8 +1295,9 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
                 break
             if not isinstance(dm, dict):
                 continue
-            if str(dm.get("email", "") or "").strip():
-                continue                                   # already has a mailbox
+            dm_email = str(dm.get("email", "") or "").strip()
+            if dm_email and not _is_generic_mailbox(dm_email):
+                continue                                   # already has a personal mailbox
             name = str(dm.get("name", "") or "").strip()
             parts = name.split(" ", 1)
             if len(parts) < 2:
@@ -1315,8 +1326,12 @@ async def _enrich_decision_maker_emails(leads: list[dict]) -> list[dict]:
         if queries_left <= 0:
             break
         decision_makers = lead.get("decision_makers") or []
-        if any(str((dm or {}).get("email", "") or "").strip() for dm in decision_makers if isinstance(dm, dict)):
-            continue                                       # finder already landed one
+        if any(
+            str((dm or {}).get("email", "") or "").strip()
+            and not _is_generic_mailbox(str((dm or {}).get("email", "") or ""))
+            for dm in decision_makers if isinstance(dm, dict)
+        ):
+            continue                                       # finder already landed a personal mailbox
         if any(isinstance(dm, dict) and str(dm.get("name", "") or "").strip()
                for dm in decision_makers):
             continue                                       # named DMs exist but were not found — no generic blast
@@ -1627,6 +1642,23 @@ async def lead_extract_node(
     new_leads = list(await asyncio.gather(
         *[_verify_lead_emails(lead, verifier) for lead in new_leads]
     ))
+
+    # ── Phone quality: rank mobile lines first (landlines are company
+    # phones, never the decision-maker's WhatsApp) ────────────────────────
+    from tools.phone_quality import classify_and_rank_phones
+
+    for lead in new_leads:
+        phones = lead.get("phone_numbers") or []
+        if not phones:
+            continue
+        country = str(lead.get("country_code", "") or "").strip().upper()
+        try:
+            ranked, _meta = classify_and_rank_phones([str(p) for p in phones], country)
+            if ranked:
+                lead["phone_numbers"] = ranked
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[LeadExtract] Phone ranking failed for %s: %s",
+                         lead.get("company_name", "?"), exc)
 
     # ── Decision-maker enrichment (best-effort, budget-capped) ───────────
     new_leads = await _enrich_decision_maker_emails(new_leads)

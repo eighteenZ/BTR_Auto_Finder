@@ -80,6 +80,20 @@ def _social_links(lead: dict[str, Any]) -> str:
     return " | ".join(f"{key}: {value}" for key, value in social.items() if value)
 
 
+def _annotated_phones(lead: dict[str, Any]) -> str:
+    """Phone column with line-type annotations (手机 = plausibly WhatsApp)."""
+    from tools.phone_quality import label_for
+
+    parts: list[str] = []
+    for raw in lead.get("phone_numbers") or []:
+        number = str(raw).strip()
+        if not number:
+            continue
+        label = label_for(number, str(lead.get("country_code", "") or "").strip().upper())
+        parts.append(f"{number}（{label}）" if label else number)
+    return "; ".join(parts)
+
+
 def _score(value: Any) -> Any:
     try:
         return round(float(value), 3)
@@ -94,7 +108,7 @@ BRIEF_COLUMNS: list[Column] = [
     ("行业", lambda l: l.get("industry", "")),
     ("联系人", _contact_name),
     ("邮箱", lambda l: _joined(l.get("emails"))),
-    ("电话", lambda l: _joined(l.get("phone_numbers"))),
+    ("电话", _annotated_phones),
     ("优先级", lambda l: l.get("priority_tier", "")),
     ("匹配度", lambda l: _score(l.get("match_score"))),
 ]

@@ -413,3 +413,77 @@ class TestFinderFirstPriority:
 
         domain_search.assert_not_awaited()                 # budget spent on phase 1
         assert result[0]["decision_makers"][0]["email"] == "a@one.com"
+
+
+class TestGenericBoxUpgrade:
+    def _fake_settings(self):
+        return _FakeSettings()
+
+    @pytest.fixture
+    def settings(self):
+        s = _FakeSettings()
+        return s
+
+    @pytest.mark.asyncio
+    async def test_named_dm_with_generic_box_still_gets_personal_lookup(
+            self, monkeypatch):
+        """A named DM whose only email is the company's sales@ box is NOT
+        'covered' — Finder should look up their personal mailbox."""
+        monkeypatch.setattr("agents.lead_extract_agent.get_settings",
+                            lambda: TestEmailFinderPipeline._settings(self))
+        monkeypatch.setattr("tools.contact_enrichment.get_settings",
+                            lambda: TestEmailFinderPipeline._settings(self))
+        leads = [{
+            "company_name": "Acme", "website": "https://acme.com",
+            "emails": ["sales@acme.com"],
+            "decision_makers": [{"name": "Jane Doe", "title": "Owner",
+                                 "email": "sales@acme.com",
+                                 "linkedin": "", "source_url": ""}],
+        }]
+        finder = AsyncMock(return_value={
+            "email": "jane.doe@acme.com", "first_name": "Jane", "last_name": "Doe",
+            "position": "Owner", "confidence": 95,
+            "verification_status": "valid", "source": "enrichment",
+        })
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_email", finder)
+        domain_search = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_decision_makers",
+            domain_search)
+
+        result = await _enrich_decision_maker_emails(leads)
+
+        finder.assert_awaited_once()
+        dm = result[0]["decision_makers"][0]
+        assert dm["email"] == "jane.doe@acme.com"          # 升级为个人邮箱
+        # 泛箱保留在 lead emails 兜底
+        assert "sales@acme.com" in result[0]["emails"]
+
+    @pytest.mark.asyncio
+    async def test_personal_mailbox_dm_is_not_requeried(self, monkeypatch):
+        """A DM that already has a personal mailbox is left alone."""
+        monkeypatch.setattr("agents.lead_extract_agent.get_settings",
+                            lambda: self._fake_settings())
+        monkeypatch.setattr("tools.contact_enrichment.get_settings",
+                            lambda: TestEmailFinderPipeline._settings(self))
+        leads = [{
+            "company_name": "Acme", "website": "https://acme.com",
+            "emails": ["jane.doe@acme.com"],
+            "decision_makers": [{"name": "Jane Doe", "title": "Owner",
+                                 "email": "jane.doe@acme.com",
+                                 "linkedin": "", "source_url": ""}],
+        }]
+        finder = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_email", finder)
+        domain_search = AsyncMock()
+        monkeypatch.setattr(
+            "tools.contact_enrichment.ContactEnrichmentTool.find_decision_makers",
+            domain_search)
+
+        result = await _enrich_decision_maker_emails(leads)
+
+        finder.assert_not_awaited()
+        domain_search.assert_not_awaited()
+        assert result == leads

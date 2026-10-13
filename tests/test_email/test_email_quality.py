@@ -103,3 +103,30 @@ class TestExpandEmailTargetsPlaceholderFilter:
         targets = expand_email_targets(lead)
 
         assert [t["target_email"] for t in targets] == ["info@acme.com", "sales@acme.com", "buyer@acme.com"]
+
+
+class TestPhoneQuality:
+    def test_china_mobile_and_uk_fixed_classification(self):
+        from tools.phone_quality import line_type
+
+        assert line_type("13800138000", "CN") == "mobile"
+        assert line_type("020 7946 0958", "GB") == "fixed"
+        assert line_type("not-a-phone", "US") == ""
+
+    def test_classify_and_rank_puts_mobile_first(self):
+        from tools.phone_quality import classify_and_rank_phones
+
+        phones = ["020 7946 0958", "13800138000"]          # 固话在前，手机在后
+        ranked, meta = classify_and_rank_phones(phones, "CN")
+
+        assert ranked[0] == "13800138000"                  # 手机排最前
+        assert [m["line_type"] for m in meta] == ["fixed", "mobile"]
+        assert meta[1]["label"] == "手机"
+
+    def test_unparseable_numbers_rank_last(self):
+        from tools.phone_quality import classify_and_rank_phones
+
+        ranked, meta = classify_and_rank_phones(["13800138000", "not-a-phone"], "CN")
+
+        assert ranked[-1] == "not-a-phone"
+        assert ranked[0] == "13800138000"
